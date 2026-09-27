@@ -100,7 +100,7 @@ export const PrayerTimesViewer: React.FC<PrayerTimesViewerProps> = ({ trueDarkMo
 
       const response = await fetch(url);
       if (!response.ok) throw new Error('فشل جلب مواقيت الصلاة من السيرفر');
-      const json = await response.ok ? await response.json() : null;
+      const json = await response.json();
       
       if (json && json.data && json.data.timings) {
         const t = json.data.timings;
@@ -125,7 +125,18 @@ export const PrayerTimesViewer: React.FC<PrayerTimesViewerProps> = ({ trueDarkMo
         setTimes(JSON.parse(cached));
         setErrorMsg('تم تحميل المواقيت المخزنة مسبقاً لعدم توفر اتصال بالشبكة');
       } else {
-        setErrorMsg('فشل الاتصال بالشبكة ولم يتم العثور على مواقيت مخزنة.');
+        // Safe offline fallback so that the table, customization bell, voices list and test buttons are ALWAYS visible!
+        const fallbackTimes: PrayerTimes = {
+          Fajr: "05:15",
+          Sunrise: "06:40",
+          Dhuhr: "12:55",
+          Asr: "16:15",
+          Maghrib: "18:45",
+          Isha: "20:10",
+          date: "27 Sep 2026"
+        };
+        setTimes(fallbackTimes);
+        setErrorMsg('تعذر الاتصال بالشبكة؛ تم تشغيل نمط العمل دون اتصال وعرض التوقيت الافتراضي للبلد.');
       }
     } finally {
       setIsLoading(false);

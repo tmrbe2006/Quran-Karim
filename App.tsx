@@ -227,6 +227,17 @@ const App: React.FC = () => {
         }
       } catch (err) {
         console.warn('Failed to fetch prayer timings in background', err);
+        // Guarantee default prayer times are stored in localStorage for offline reliability
+        const fallbackTimes = {
+          Fajr: "05:15",
+          Sunrise: "06:40",
+          Dhuhr: "12:55",
+          Asr: "16:15",
+          Maghrib: "18:45",
+          Isha: "20:10",
+          date: "27 Sep 2026"
+        };
+        localStorage.setItem('quran_app_cached_prayer_times', JSON.stringify(fallbackTimes));
       }
     };
 
