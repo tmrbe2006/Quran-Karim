@@ -34,22 +34,13 @@ export const QuranViewer: React.FC<QuranViewerProps> = ({
 }) => {
   const activeAyahRef = useRef<HTMLDivElement>(null);
   const [showTafsirAyahIndex, setShowTafsirAyahIndex] = useState<number | null>(null);
+  const [downloadedAyahs, setDownloadedAyahs] = useState<Record<number, boolean>>({});
 
   useEffect(() => {
     if (activeAyahRef.current) {
       activeAyahRef.current.scrollIntoView({ behavior: 'smooth', block: 'center' });
     }
   }, [currentAyahIndex]);
-
-  if (isLoading) {
-    return (
-      <div className="flex-1 flex items-center justify-center bg-[#051d14]">
-        <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-[#00b87c]"></div>
-      </div>
-    );
-  }
-
-  const [downloadedAyahs, setDownloadedAyahs] = useState<Record<number, boolean>>({});
 
   // Check which ayahs are downloaded offline for this reciter
   useEffect(() => {
@@ -68,6 +59,14 @@ export const QuranViewer: React.FC<QuranViewerProps> = ({
     checkDownloaded();
     return () => { isMounted = false; };
   }, [surah, ayahs, reciter.id, currentAyahIndex]);
+
+  if (isLoading) {
+    return (
+      <div className="flex-1 flex items-center justify-center bg-[#051d14]">
+        <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-[#00b87c]"></div>
+      </div>
+    );
+  }
 
   const shouldHideText = memorization?.isActive && memorization?.hideAyahs;
 

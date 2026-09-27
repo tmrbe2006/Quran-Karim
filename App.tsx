@@ -12,6 +12,7 @@ import { OfflineIndicator } from './components/OfflineIndicator';
 import { Surah, Ayah, Reciter, AppSettings, FavoriteAyah, BookmarkAyah, MemorizationState } from './types';
 import { RECITERS, API_BASE_URL, AUDIO_BASE_URL, DEFAULT_SETTINGS, SURAHS_LIST_FALLBACK } from './constants';
 import { OFFLINE_SURAHS_DATA } from './data/offlineSurahs';
+import { getOfflineSurahAyahs, searchInQuranOffline } from './utils/quranData';
 import { saveAyahAudio, getAyahAudio } from './utils/audioStorage';
 import { GoogleGenAI } from "@google/genai";
 
@@ -101,14 +102,31 @@ const App: React.FC = () => {
       const cache = await caches.open('quran-surahs-data');
 
       setTextDownloadProgress(10);
-      const textRes = await fetch('https://api.alquran.cloud/v1/quran/quran-uthmani');
-      if (!textRes.ok) throw new Error(`HTTP error text: ${textRes.status}`);
-      const fullTextData = await textRes.json();
+      let fullTextData: any = null;
+      let fullTafsirData: any = null;
+
+      try {
+        const textRes = await fetch('https://api.alquran.cloud/v1/quran/quran-uthmani');
+        if (textRes.ok) fullTextData = await textRes.json();
+      } catch (e) {}
+
+      if (!fullTextData) {
+        const localTextRes = await fetch('/data/quran-uthmani.json');
+        if (localTextRes.ok) fullTextData = await localTextRes.json();
+      }
+
       setTextDownloadProgress(35);
 
-      const tafsirRes = await fetch('https://api.alquran.cloud/v1/quran/ar.jalalayn');
-      if (!tafsirRes.ok) throw new Error(`HTTP error tafsir: ${tafsirRes.status}`);
-      const fullTafsirData = await tafsirRes.json();
+      try {
+        const tafsirRes = await fetch('https://api.alquran.cloud/v1/quran/ar.jalalayn');
+        if (tafsirRes.ok) fullTafsirData = await tafsirRes.json();
+      } catch (e) {}
+
+      if (!fullTafsirData) {
+        const localTafsirRes = await fetch('/data/tafsir-jalalayn.json');
+        if (localTafsirRes.ok) fullTafsirData = await localTafsirRes.json();
+      }
+
       setTextDownloadProgress(60);
 
       const surahsList = fullTextData?.data?.surahs || [];
@@ -198,6 +216,19 @@ const App: React.FC = () => {
   // Initial Data Fetching (Surahs Metadata)
   useEffect(() => {
     const fetchSurahs = async () => {
+      // 1. Try local bundled surahs.json first
+      try {
+        const localRes = await fetch('/data/surahs.json');
+        if (localRes.ok) {
+          const localData = await localRes.json();
+          if (localData?.data && Array.isArray(localData.data)) {
+            setSurahs(localData.data);
+            return;
+          }
+        }
+      } catch (e) {}
+
+      // 2. Try CacheStorage
       try {
         const url = `${API_BASE_URL}/surah`;
         if (typeof window !== 'undefined' && 'caches' in window) {
@@ -206,11 +237,15 @@ const App: React.FC = () => {
             const cachedResponse = await cache.match(url);
             if (cachedResponse) {
               const data = await cachedResponse.json();
-              if (data?.data) setSurahs(data.data);
+              if (data?.data) {
+                setSurahs(data.data);
+                return;
+              }
             }
           } catch (e) {}
         }
 
+        // 3. Fetch from API if online
         const response = await fetch(url);
         if (response.ok) {
           const data = await response.json();
@@ -266,12 +301,22 @@ const App: React.FC = () => {
     const loadContent = async () => {
       setIsLoading(true);
       try {
+        // 1. Try local offline bundled dataset first (instant 100% offline support for all 114 surahs)
+        const offlineAyahs = await getOfflineSurahAyahs(selectedSurah.number);
+        if (offlineAyahs && offlineAyahs.length > 0) {
+          setAyahs(offlineAyahs);
+          setCurrentAyahIndex(targetAyahIndex !== null ? targetAyahIndex : 0);
+          setTargetAyahIndex(null);
+          setIsLoading(false);
+          return;
+        }
+
         let tData: any = null;
         let fData: any = null;
         const textUrl = `${API_BASE_URL}/surah/${selectedSurah.number}`;
         const tafsirUrl = `${API_BASE_URL}/surah/${selectedSurah.number}/ar.jalalayn`;
 
-        // 1. Check browser cache first
+        // 2. Check browser cache
         if (typeof window !== 'undefined' && 'caches' in window) {
           try {
             const cache = await caches.open('quran-surahs-data');
@@ -286,7 +331,7 @@ const App: React.FC = () => {
           } catch (e) {}
         }
 
-        // 2. Fetch text online if not in cache
+        // 3. Fetch text online if not in cache
         if (!tData) {
           try {
             const res = await fetch(textUrl, { signal: ctrl.signal });
@@ -306,7 +351,7 @@ const App: React.FC = () => {
           }
         }
 
-        // 3. Fallback to bundled offline dataset if network unavailable and not in cache
+        // 4. Fallback to basic offline dataset if network unavailable
         if (!tData && OFFLINE_SURAHS_DATA[selectedSurah.number]) {
           tData = {
             data: {
@@ -315,7 +360,7 @@ const App: React.FC = () => {
           };
         }
 
-        // 4. Fetch tafsir online if not in cache (optional)
+        // 5. Fetch tafsir online if not in cache (optional)
         if (!fData) {
           try {
             const res = await fetch(tafsirUrl, { signal: ctrl.signal });
@@ -342,7 +387,6 @@ const App: React.FC = () => {
           setCurrentAyahIndex(targetAyahIndex !== null ? targetAyahIndex : 0);
           setTargetAyahIndex(null);
         } else {
-          // If offline and surah is not cached
           setAyahs([]);
         }
       } catch (e) {
@@ -559,16 +603,37 @@ const App: React.FC = () => {
                       onRemoveBookmark={(b) => setBookmarks(p => p.filter(x => x !== b))}
                       onSearch={async (q) => {
                         setIsSearchLoading(true);
-                        const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-                        const r = await ai.models.generateContent({
-                          model: 'gemini-3-flash-preview',
-                          contents: `ابحث في القرآن عن "${q}". ارجع JSON فقط: [{"surahNumber": 1, "surahName": "الفاتحة", "numberInSurah": 1, "text": "..."}]`,
-                          config: { responseMimeType: "application/json" }
-                        });
-                        const res = JSON.parse(r.text || "[]");
-                        setSearchResults(res.map((x: any) => ({ text: x.text, numberInSurah: x.numberInSurah, surah: { number: x.surahNumber, name: x.surahName } })));
+                        try {
+                          // Try offline instant search first
+                          const localMatches = await searchInQuranOffline(q);
+                          if (localMatches && localMatches.length > 0) {
+                            setSearchResults(localMatches.map((x: any) => ({
+                              text: x.text,
+                              numberInSurah: x.numberInSurah,
+                              surah: { number: x.surahNumber, name: x.surahName }
+                            })));
+                            setIsSearchLoading(false);
+                            return localMatches;
+                          }
+
+                          // If online and process.env.API_KEY is available, fallback to AI semantic search
+                          if (navigator.onLine && process.env.API_KEY) {
+                            const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+                            const r = await ai.models.generateContent({
+                              model: 'gemini-3-flash-preview',
+                              contents: `ابحث في القرآن عن "${q}". ارجع JSON فقط: [{"surahNumber": 1, "surahName": "الفاتحة", "numberInSurah": 1, "text": "..."}]`,
+                              config: { responseMimeType: "application/json" }
+                            });
+                            const res = JSON.parse(r.text || "[]");
+                            setSearchResults(res.map((x: any) => ({ text: x.text, numberInSurah: x.numberInSurah, surah: { number: x.surahNumber, name: x.surahName } })));
+                            setIsSearchLoading(false);
+                            return res;
+                          }
+                        } catch (e) {
+                          console.warn('Search failed:', e);
+                        }
                         setIsSearchLoading(false);
-                        return res;
+                        return [];
                       }}
                       onSelectSearchResult={(res) => {
                         const s = surahs.find(x => x.number === res.surah.number);
@@ -643,16 +708,37 @@ const App: React.FC = () => {
                   onRemoveBookmark={(b) => setBookmarks(p => p.filter(x => x !== b))}
                   onSearch={async (q) => {
                     setIsSearchLoading(true);
-                    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-                    const r = await ai.models.generateContent({
-                      model: 'gemini-3-flash-preview',
-                      contents: `ابحث في القرآن عن "${q}". ارجع JSON فقط: [{"surahNumber": 1, "surahName": "الفاتحة", "numberInSurah": 1, "text": "..."}]`,
-                      config: { responseMimeType: "application/json" }
-                    });
-                    const res = JSON.parse(r.text || "[]");
-                    setSearchResults(res.map((x: any) => ({ text: x.text, numberInSurah: x.numberInSurah, surah: { number: x.surahNumber, name: x.surahName } })));
+                    try {
+                      // Try offline instant search first
+                      const localMatches = await searchInQuranOffline(q);
+                      if (localMatches && localMatches.length > 0) {
+                        setSearchResults(localMatches.map((x: any) => ({
+                          text: x.text,
+                          numberInSurah: x.numberInSurah,
+                          surah: { number: x.surahNumber, name: x.surahName }
+                        })));
+                        setIsSearchLoading(false);
+                        return localMatches;
+                      }
+
+                      // If online and process.env.API_KEY is available, fallback to AI semantic search
+                      if (navigator.onLine && process.env.API_KEY) {
+                        const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+                        const r = await ai.models.generateContent({
+                          model: 'gemini-3-flash-preview',
+                          contents: `ابحث في القرآن عن "${q}". ارجع JSON فقط: [{"surahNumber": 1, "surahName": "الفاتحة", "numberInSurah": 1, "text": "..."}]`,
+                          config: { responseMimeType: "application/json" }
+                        });
+                        const res = JSON.parse(r.text || "[]");
+                        setSearchResults(res.map((x: any) => ({ text: x.text, numberInSurah: x.numberInSurah, surah: { number: x.surahNumber, name: x.surahName } })));
+                        setIsSearchLoading(false);
+                        return res;
+                      }
+                    } catch (e) {
+                      console.warn('Search failed:', e);
+                    }
                     setIsSearchLoading(false);
-                    return res;
+                    return [];
                   }}
                   onSelectSearchResult={(res) => {
                     const s = surahs.find(x => x.number === res.surah.number);

@@ -14,7 +14,17 @@ export default defineConfig(({ mode }) => {
         react(),
         VitePWA({
           registerType: 'autoUpdate',
-          includeAssets: ['favicon.ico', 'apple-touch-icon.png', 'icon.svg', 'pwa-192x192.png', 'pwa-512x512.png'],
+          includeAssets: [
+            'favicon.ico',
+            'apple-touch-icon.png',
+            'icon.svg',
+            'pwa-192x192.png',
+            'pwa-512x512.png',
+            'tailwindcss.js',
+            'data/quran-uthmani.json',
+            'data/tafsir-jalalayn.json',
+            'data/surahs.json'
+          ],
           manifest: {
             id: '/',
             name: 'القرآن الكريم - المصحف الرقمي',
@@ -49,8 +59,23 @@ export default defineConfig(({ mode }) => {
             ],
           },
           workbox: {
-            globPatterns: ['**/*.{js,css,html,ico,png,svg,woff,woff2}'],
+            maximumFileSizeToCacheInBytes: 6 * 1024 * 1024,
+            globPatterns: ['**/*.{js,css,html,ico,png,svg,woff,woff2,json}'],
             runtimeCaching: [
+              {
+                urlPattern: ({ url }) => url.pathname.startsWith('/data/'),
+                handler: 'CacheFirst',
+                options: {
+                  cacheName: 'quran-bundled-data',
+                  expiration: {
+                    maxEntries: 10,
+                    maxAgeSeconds: 60 * 60 * 24 * 365,
+                  },
+                  cacheableResponse: {
+                    statuses: [0, 200],
+                  },
+                },
+              },
               {
                 urlPattern: /^https:\/\/fonts\.googleapis\.com\/.*/i,
                 handler: 'CacheFirst',
