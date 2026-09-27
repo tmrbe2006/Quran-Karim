@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <script>
+      (function() {
+        try {
+          var _rawFetch = window.fetch;
+          var desc = Object.getOwnPropertyDescriptor(window, 'fetch');
+          if (!desc || desc.configurable) {
+            Object.defineProperty(window, 'fetch', {
+              get: function() {
+                return _rawFetch;
+              },
+              set: function(val) {
+                _rawFetch = val;
+              },
+              configurable: true,
+              enumerable: true
+            });
+          }
+        } catch (e) {
+          console.warn("Fetch descriptor setup:", e);
+        }
+      })();
+    </script>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>القرآن الكريم - المصحف الرقمي</title>
+    <meta name="description" content="تطبيق متقدم لتلاوة القرآن الكريم والأذكار وتحديد القبلة بدون اتصال بالإنترنت مع تزامن الصوت والنص.">
+    <meta property="og:title" content="القرآن الكريم - المصحف الرقمي">
+    <meta property="og:description" content="تطبيق متقدم لتلاوة القرآن الكريم والأذكار وتحديد القبلة بدون اتصال بالإنترنت مع تزامن الصوت والنص.">
+    <meta name="theme-color" content="#051d14">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="القرآن الكريم">
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png">
+    <link rel="icon" type="image/svg+xml" href="/icon.svg">
+    <link rel="icon" type="image/png" sizes="192x192" href="/pwa-192x192.png">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Amiri:wght@400;700&family=Tajawal:wght@300;400;500;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Tajawal', sans-serif;
+            background-color: #020d09;
+            color: white;
+            overflow: hidden;
+        }
+        .quran-text {
+            font-family: 'Amiri', serif;
+        }
+        .star-8 {
+            clip-path: polygon(50% 0%, 65% 15%, 100% 15%, 85% 50%, 100% 85%, 65% 85%, 50% 100%, 35% 85%, 0% 85%, 15% 50%, 0% 15%, 35% 15%);
+        }
+        ::-webkit-scrollbar {
+            width: 4px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #051d14;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #00b87c;
+            border-radius: 4px;
+        }
+        .bg-deep-green { background-color: #051d14; }
+        .bg-surface-green { background-color: #0a2a1f; }
+        .text-primary-green { color: #00b87c; }
+        .border-primary-green { border-color: #00b87c; }
+        
+        /* Custom animations for transitions */
+        .page-fade-in {
+            animation: fadeIn 0.3s ease-in;
+        }
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+    </style>
+</head>
+<body class="bg-[#020d09] text-white">
+    <div id="root"></div>
+<script type="module" src="/index.tsx"></script>
+</body>
+</html>

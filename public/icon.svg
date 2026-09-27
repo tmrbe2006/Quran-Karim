@@ -1,0 +1,58 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#020d09" />
+      <stop offset="100%" stop-color="#0a2a1f" />
+    </linearGradient>
+    <linearGradient id="goldGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#dfb26d" />
+      <stop offset="100%" stop-color="#f9d48b" />
+    </linearGradient>
+    <linearGradient id="greenGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#00b87c" />
+      <stop offset="100%" stop-color="#05df97" />
+    </linearGradient>
+  </defs>
+
+  <!-- Background -->
+  <rect width="512" height="512" rx="112" fill="url(#bgGrad)"/>
+  
+  <!-- Outer Decorative Ring -->
+  <circle cx="256" cy="256" r="210" fill="none" stroke="url(#goldGrad)" stroke-width="4" stroke-dasharray="8 6" opacity="0.6"/>
+  <circle cx="256" cy="256" r="195" fill="none" stroke="url(#greenGrad)" stroke-width="2" opacity="0.4"/>
+
+  <!-- Islamic 8-Point Star Backing -->
+  <g transform="translate(256 256) scale(0.85)">
+    <rect x="-120" y="-120" width="240" height="240" rx="24" fill="#051d14" stroke="url(#goldGrad)" stroke-width="6"/>
+    <rect x="-120" y="-120" width="240" height="240" rx="24" fill="#051d14" stroke="url(#goldGrad)" stroke-width="6" transform="rotate(45)"/>
+  </g>
+
+  <!-- Quran Book Shape -->
+  <g transform="translate(256 256)">
+    <!-- Stand / Rihal -->
+    <path d="M-80 90 L80 90 L60 120 L-60 120 Z" fill="#072016" stroke="url(#goldGrad)" stroke-width="3"/>
+    <path d="M-90 120 L90 120 L105 140 L-105 140 Z" fill="#03120c" stroke="url(#goldGrad)" stroke-width="2"/>
+
+    <!-- Open Book Left Page -->
+    <path d="M-8 65 C-45 55 -95 60 -125 45 C-130 10 -130 -40 -125 -65 C-95 -50 -45 -55 -8 -45 Z" 
+          fill="#fdfbf7" stroke="url(#goldGrad)" stroke-width="4"/>
+    <!-- Page lines left -->
+    <line x1="-110" y1="-35" x2="-25" y2="-25" stroke="#dfb26d" stroke-width="3" stroke-linecap="round" opacity="0.7"/>
+    <line x1="-110" y1="-10" x2="-25" y2="0" stroke="#00b87c" stroke-width="3" stroke-linecap="round" opacity="0.6"/>
+    <line x1="-110" y1="15" x2="-25" y2="25" stroke="#dfb26d" stroke-width="3" stroke-linecap="round" opacity="0.7"/>
+    <line x1="-100" y1="40" x2="-35" y2="50" stroke="#00b87c" stroke-width="3" stroke-linecap="round" opacity="0.6"/>
+
+    <!-- Open Book Right Page -->
+    <path d="M8 65 C45 55 95 60 125 45 C130 10 130 -40 125 -65 C95 -50 45 -55 8 -45 Z" 
+          fill="#fdfbf7" stroke="url(#goldGrad)" stroke-width="4"/>
+    <!-- Page lines right -->
+    <line x1="25" y1="-25" x2="110" y2="-35" stroke="#dfb26d" stroke-width="3" stroke-linecap="round" opacity="0.7"/>
+    <line x1="25" y1="0" x2="110" y2="-10" stroke="#00b87c" stroke-width="3" stroke-linecap="round" opacity="0.6"/>
+    <line x1="25" y1="25" x2="110" y2="15" stroke="#dfb26d" stroke-width="3" stroke-linecap="round" opacity="0.7"/>
+    <line x1="35" y1="50" x2="100" y2="40" stroke="#00b87c" stroke-width="3" stroke-linecap="round" opacity="0.6"/>
+
+    <!-- Spine -->
+    <path d="M-8 -50 L8 -50 L8 70 L-8 70 Z" fill="url(#goldGrad)"/>
+    <circle cx="0" cy="80" r="8" fill="url(#greenGrad)"/>
+  </g>
+</svg>
