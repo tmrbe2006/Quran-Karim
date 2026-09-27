@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Surah, FavoriteAyah, BookmarkAyah, MemorizationState, Reciter } from '../types';
 import { RECITERS, API_BASE_URL } from '../constants';
+import { ReciterStorageManager } from './ReciterStorageManager';
 
 const SAJDAHS = [
   { surah: 7, ayah: 206, name: "الأعراف" },
@@ -151,9 +152,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 <button
                   onClick={() => onOpenTab('about')}
                   className="text-slate-300 hover:text-[#dfb26d] bg-[#0a2a1f] p-2 rounded-xl border border-white/5 transition-colors"
-                  title="نبذة عن التطبيق - صدقة جارية"
+                  title="التحميل أوفلاين ومعلومات التطبيق"
                 >
-                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
                 </button>
               )}
             </div>
@@ -603,28 +604,32 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   )}
                 </div>
 
-                <div>
-                  <h4 className="text-sm font-bold text-[#dfb26d] mb-2">تحميل صوت القارئ</h4>
-                  <p className="text-[10px] text-slate-400 mb-4 leading-relaxed">تحميل ملفات الصوت الخاصة بـ ({currentReciter.name}) لتعمل Offline.</p>
-                  
+                <div className="space-y-3">
+                  <h4 className="text-sm font-bold text-[#dfb26d]">مجلد صوت القارئ في الهاتف</h4>
+                  <p className="text-[10px] text-slate-400 leading-relaxed">
+                    يتم تلقائياً حفظ أي آية تستمع إليها في مجلد القارئ المخصص (<span className="text-[#00b87c]">{currentReciter.name}</span>) لتعمل بدون اتصال. كما يمكنك تحميل صوته كاملاً:
+                  </p>
+
+                  <ReciterStorageManager reciter={currentReciter} />
+
                   {audioDownloadProgress === null ? (
                     <button 
                       onClick={onDownloadAllAudio}
-                      className="w-full bg-[#dfb26d]/20 hover:bg-[#dfb26d] text-[#dfb26d] hover:text-white py-3 rounded-2xl font-bold transition-all flex items-center justify-center gap-2 border border-[#dfb26d]/30"
+                      className="w-full bg-[#dfb26d]/20 hover:bg-[#dfb26d] text-[#dfb26d] hover:text-white py-3 rounded-2xl font-bold transition-all flex items-center justify-center gap-2 border border-[#dfb26d]/30 text-xs"
                     >
                       <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
-                      تحميل صوت القارئ كاملاً
+                      تحميل كامل سور المصحف بصوت {currentReciter.name}
                     </button>
                   ) : audioDownloadProgress < 100 ? (
                     <div className="space-y-3">
                       <div className="w-full bg-black/20 h-2 rounded-full overflow-hidden">
                         <div className="bg-[#dfb26d] h-full transition-all duration-300" style={{ width: `${audioDownloadProgress}%` }}></div>
                       </div>
-                      <p className="text-[10px] font-bold text-[#dfb26d]">{audioDownloadProgress}% جاري تحميل الصوت...</p>
+                      <p className="text-[10px] font-bold text-[#dfb26d]">{audioDownloadProgress}% جاري حفظ التلاوة في مجلد {currentReciter.name}...</p>
                     </div>
                   ) : (
                     <div className="flex items-center justify-center gap-2 text-[#dfb26d] font-bold text-xs bg-[#dfb26d]/10 py-3 rounded-2xl border border-[#dfb26d]/30">
-                      تم تحميل صوت {currentReciter.name} بنجاح
+                      تم تحميل وحفظ صوت {currentReciter.name} كاملاً في الهاتف
                     </div>
                   )}
                 </div>

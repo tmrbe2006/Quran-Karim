@@ -12,6 +12,7 @@ import { OfflineIndicator } from './components/OfflineIndicator';
 import { Surah, Ayah, Reciter, AppSettings, FavoriteAyah, BookmarkAyah, MemorizationState } from './types';
 import { RECITERS, API_BASE_URL, AUDIO_BASE_URL, DEFAULT_SETTINGS, SURAHS_LIST_FALLBACK } from './constants';
 import { OFFLINE_SURAHS_DATA } from './data/offlineSurahs';
+import { saveAyahAudio, getAyahAudio } from './utils/audioStorage';
 import { GoogleGenAI } from "@google/genai";
 
 type TabType = 'surahs' | 'adhkar' | 'qibla' | 'favorites' | 'bookmarks' | 'search' | 'memorize' | 'about';
@@ -142,15 +143,13 @@ const App: React.FC = () => {
     }
   };
 
-  // High-Performance Audio Downloader
+  // High-Performance Audio Downloader (Concurrently batches downloads per reciter)
   const downloadAllAudio = async () => {
     if (isAudioDownloading) return;
-    if (typeof window === 'undefined' || !('caches' in window)) return;
     setIsAudioDownloading(true);
     setAudioDownloadProgress(0);
     
     try {
-      const cache = await caches.open('quran-audio-cache');
       let totalDownloaded = 0;
       const totalAyahs = 6236;
 
@@ -167,10 +166,14 @@ const App: React.FC = () => {
           
           chunk.push((async () => {
             try {
-              const cached = await cache.match(url);
-              if (!cached) {
+              // Check if already in reciter's offline folder
+              const existingBlob = await getAyahAudio(reciter, sNum, aNum, url);
+              if (!existingBlob) {
                 const res = await fetch(url);
-                if (res.ok) await cache.put(url, res);
+                if (res.ok) {
+                  const blob = await res.blob();
+                  await saveAyahAudio(reciter, sNum, aNum, blob, url);
+                }
               }
             } catch (e) {}
             totalDownloaded++;
@@ -368,19 +371,28 @@ const App: React.FC = () => {
     
     const playAudio = async () => {
       try {
-        let res: Response | undefined;
-        if (typeof window !== 'undefined' && 'caches' in window) {
+        let blob: Blob | null = null;
+
+        // 1. Check if this ayah is already saved in this reciter's offline folder
+        blob = await getAyahAudio(reciter, selectedSurah.number, currentAyah.numberInSurah, audioUrl);
+
+        // 2. If not found in offline storage, fetch online and automatically cache in reciter's folder!
+        if (!blob) {
           try {
-            const cache = await caches.open('quran-audio-cache');
-            const cachedRes = await cache.match(audioUrl);
-            if (cachedRes) res = cachedRes;
-          } catch (e) {}
+            const res = await fetch(audioUrl);
+            if (res && res.ok) {
+              blob = await res.blob();
+              // Save asynchronously to reciter's folder for offline playback
+              saveAyahAudio(reciter, selectedSurah.number, currentAyah.numberInSurah, blob, audioUrl, currentAyah.number).catch(e => {
+                console.warn('Auto-save ayah audio failed:', e);
+              });
+            }
+          } catch (netErr) {
+            console.warn('Network fetch error for audio:', netErr);
+          }
         }
-        if (!res) {
-          res = await fetch(audioUrl);
-        }
-        if (res && res.ok) {
-          const blob = await res.blob();
+
+        if (blob) {
           const bUrl = URL.createObjectURL(blob);
           if (audioUrlRef.current) URL.revokeObjectURL(audioUrlRef.current);
           audioUrlRef.current = bUrl;
@@ -388,6 +400,10 @@ const App: React.FC = () => {
             audioRef.current.src = bUrl;
             audioRef.current.play().catch(() => {});
           }
+        } else if (audioRef.current) {
+          // Fallback to direct url stream
+          audioRef.current.src = audioUrl;
+          audioRef.current.play().catch(() => {});
         }
       } catch (e) {
         if (audioRef.current) { audioRef.current.src = audioUrl; audioRef.current.play().catch(() => {}); }

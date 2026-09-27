@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Ayah, Surah, AppSettings, FavoriteAyah, BookmarkAyah, MemorizationState, Reciter } from '../types';
 import { AUDIO_BASE_URL } from '../constants';
+import { saveAyahAudio, isAyahAudioDownloaded } from '../utils/audioStorage';
 
 interface QuranViewerProps {
   surah: Surah | null;
@@ -48,7 +49,46 @@ export const QuranViewer: React.FC<QuranViewerProps> = ({
     );
   }
 
+  const [downloadedAyahs, setDownloadedAyahs] = useState<Record<number, boolean>>({});
+
+  // Check which ayahs are downloaded offline for this reciter
+  useEffect(() => {
+    if (!surah) return;
+    let isMounted = true;
+    const checkDownloaded = async () => {
+      const statusMap: Record<number, boolean> = {};
+      for (const ayah of ayahs) {
+        const isDown = await isAyahAudioDownloaded(reciter.id, surah.number, ayah.numberInSurah);
+        statusMap[ayah.numberInSurah] = isDown;
+      }
+      if (isMounted) {
+        setDownloadedAyahs(statusMap);
+      }
+    };
+    checkDownloaded();
+    return () => { isMounted = false; };
+  }, [surah, ayahs, reciter.id, currentAyahIndex]);
+
   const shouldHideText = memorization?.isActive && memorization?.hideAyahs;
+
+  const handleManualDownloadAyah = async (e: React.MouseEvent, ayah: Ayah) => {
+    e.stopPropagation();
+    if (!surah) return;
+    const sStr = surah.number.toString().padStart(3, '0');
+    const aStr = ayah.numberInSurah.toString().padStart(3, '0');
+    const audioUrl = `${AUDIO_BASE_URL}/${reciter.subfolder}/${sStr}${aStr}.mp3`;
+
+    try {
+      const res = await fetch(audioUrl);
+      if (res.ok) {
+        const blob = await res.blob();
+        await saveAyahAudio(reciter, surah.number, ayah.numberInSurah, blob, audioUrl, ayah.number);
+        setDownloadedAyahs(prev => ({ ...prev, [ayah.numberInSurah]: true }));
+      }
+    } catch (err) {
+      console.warn('Manual download failed', err);
+    }
+  };
 
   return (
     <div className="flex-1 overflow-y-auto p-6 md:p-12 transition-colors duration-300 bg-[#051d14] pb-10">
@@ -114,16 +154,31 @@ export const QuranViewer: React.FC<QuranViewerProps> = ({
                     >
                       <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" /></svg>
                     </button>
+                    <button 
+                      onClick={(e) => handleManualDownloadAyah(e, ayah)}
+                      className={`p-1.5 rounded-full transition-colors ${
+                        downloadedAyahs[ayah.numberInSurah]
+                          ? 'text-[#00b87c] bg-[#00b87c]/15'
+                          : 'text-slate-500 hover:text-white'
+                      }`}
+                      title={downloadedAyahs[ayah.numberInSurah] ? `محفوظة أوفلاين في مجلد (${reciter.name})` : `حفظ الآية أوفلاين في مجلد (${reciter.name})`}
+                    >
+                      {downloadedAyahs[ayah.numberInSurah] ? (
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" /></svg>
+                      ) : (
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
+                      )}
+                    </button>
                     <a 
                       href={downloadUrl}
                       target="_blank"
                       rel="noopener noreferrer"
                       onClick={(e) => e.stopPropagation()}
-                      className="p-1.5 rounded-full transition-colors text-slate-500 hover:text-white"
-                      title="تحميل الآية"
+                      className="p-1.5 rounded-full transition-colors text-slate-500 hover:text-[#dfb26d]"
+                      title="تنزيل كملف MP3 على الجهاز"
                       download={`Ayah_${ayah.number}.mp3`}
                     >
-                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
                     </a>
                   </div>
 
