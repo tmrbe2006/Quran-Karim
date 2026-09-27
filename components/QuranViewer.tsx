@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Ayah, Surah, AppSettings, FavoriteAyah, BookmarkAyah, MemorizationState, Reciter } from '../types';
-import { AUDIO_BASE_URL } from '../constants';
+import { AUDIO_BASE_URL, TAFSIR_EDITIONS, DEFAULT_SETTINGS } from '../constants';
 import { saveAyahAudio, isAyahAudioDownloaded } from '../utils/audioStorage';
 
 interface QuranViewerProps {
@@ -89,11 +89,27 @@ export const QuranViewer: React.FC<QuranViewerProps> = ({
     }
   };
 
+  const isTrueDark = !!settings.trueDarkMode;
+
   return (
-    <div className="flex-1 overflow-y-auto p-6 md:p-12 transition-colors duration-300 bg-[#051d14] pb-10">
+    <div 
+      className={`flex-1 overflow-y-auto p-6 md:p-12 transition-colors duration-500 pb-10 ${
+        isTrueDark ? 'bg-[#000000]' : 'bg-[#051d14]'
+      }`}
+      style={{
+        backgroundColor: settings.backgroundColor !== DEFAULT_SETTINGS.backgroundColor 
+          ? settings.backgroundColor 
+          : (isTrueDark ? '#000000' : '#051d14')
+      }}
+    >
       <div className="max-w-4xl mx-auto">
         {surah && surah.number !== 9 && surah.number !== 1 && (
-          <div className="text-center mb-16 quran-text text-slate-300 opacity-90" style={{ fontSize: `${settings.fontSize}px` }}>
+          <div 
+            className={`text-center mb-16 quran-text transition-colors duration-500 ${
+              isTrueDark ? 'text-[#a3947c] opacity-80' : 'text-slate-300 opacity-90'
+            }`} 
+            style={{ fontSize: `${settings.fontSize}px` }}
+          >
             بِسْمِ اللَّهِ الرَّحْمَٰنِ الرَّحِيمِ
           </div>
         )}
@@ -107,6 +123,13 @@ export const QuranViewer: React.FC<QuranViewerProps> = ({
             // استخدام خادم Islamic Network لروابط التحميل لأنه أكثر استقراراً لفرز الآيات
             const downloadUrl = `https://cdn.islamic.network/quran/audio/128/${reciter.identifier}/${ayah.number}.mp3`;
 
+            // Active & idle color computation taking True Dark Mode into account
+            let defaultTextColor = isTrueDark ? '#d6c7a9' : '#ffffff';
+            if (settings.textColor !== DEFAULT_SETTINGS.textColor) {
+              defaultTextColor = settings.textColor;
+            }
+            const activeTextColor = isTrueDark ? '#dfb26d' : '#00b87c';
+
             return (
               <div
                 key={ayah.number}
@@ -117,11 +140,13 @@ export const QuranViewer: React.FC<QuranViewerProps> = ({
                   onClick={() => onAyahClick(index)}
                   className={`inline-block px-4 py-4 rounded-3xl transition-all duration-500 cursor-pointer relative w-full text-center ${
                     index === currentAyahIndex 
-                      ? 'bg-[#00b87c]/10 shadow-lg shadow-[#00b87c]/5 ring-1 ring-[#00b87c]/30' 
-                      : 'hover:bg-white/5'
+                      ? (isTrueDark 
+                          ? 'bg-[#dfb26d]/10 shadow-lg shadow-[#dfb26d]/5 ring-1 ring-[#dfb26d]/30' 
+                          : 'bg-[#00b87c]/10 shadow-lg shadow-[#00b87c]/5 ring-1 ring-[#00b87c]/30')
+                      : (isTrueDark ? 'hover:bg-neutral-900/60' : 'hover:bg-white/5')
                   } quran-text`}
                   style={{ 
-                    color: index === currentAyahIndex ? '#00b87c' : '#ffffff',
+                    color: index === currentAyahIndex ? activeTextColor : defaultTextColor,
                     fontSize: `${settings.fontSize}px`,
                     lineHeight: `${settings.fontSize * 2.2}px`
                   }}
@@ -131,7 +156,9 @@ export const QuranViewer: React.FC<QuranViewerProps> = ({
                   </span>
                   
                   {/* Quick Actions for Ayah */}
-                  <div className={`absolute -top-12 left-1/2 -translate-x-1/2 flex gap-2 bg-[#0a2a1f] p-1.5 rounded-full border border-[#0f2d22] transition-all z-20 ${index === currentAyahIndex ? 'opacity-100 scale-100' : 'opacity-0 scale-90 pointer-events-none'}`}>
+                  <div className={`absolute -top-12 left-1/2 -translate-x-1/2 flex gap-2 ${
+                    isTrueDark ? 'bg-[#14120e] border-[#2c2419]' : 'bg-[#0a2a1f] border-[#0f2d22]'
+                  } p-1.5 rounded-full border transition-all z-20 ${index === currentAyahIndex ? 'opacity-100 scale-100' : 'opacity-0 scale-90 pointer-events-none'}`}>
                     <button 
                       onClick={(e) => { e.stopPropagation(); onToggleFavorite(ayah); }}
                       className={`p-1.5 rounded-full transition-colors ${isFav ? 'text-[#dfb26d] bg-[#dfb26d]/10' : 'text-slate-500 hover:text-white'}`}
@@ -141,14 +168,22 @@ export const QuranViewer: React.FC<QuranViewerProps> = ({
                     </button>
                     <button 
                       onClick={(e) => { e.stopPropagation(); onToggleBookmark(ayah); }}
-                      className={`p-1.5 rounded-full transition-colors ${isBm ? 'text-[#00b87c] bg-[#00b87c]/10' : 'text-slate-500 hover:text-white'}`}
+                      className={`p-1.5 rounded-full transition-colors ${
+                        isBm 
+                          ? (isTrueDark ? 'text-[#dfb26d] bg-[#dfb26d]/10' : 'text-[#00b87c] bg-[#00b87c]/10')
+                          : 'text-slate-500 hover:text-white'
+                      }`}
                       title="علامة مرجعية"
                     >
                       <svg className="w-4 h-4" fill={isBm ? "currentColor" : "none"} stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z" /></svg>
                     </button>
                     <button 
                       onClick={(e) => { e.stopPropagation(); setShowTafsirAyahIndex(isTafsirVisible ? null : index); }}
-                      className={`p-1.5 rounded-full transition-colors ${isTafsirVisible ? 'text-primary-green bg-primary-green/10' : 'text-slate-500 hover:text-white'}`}
+                      className={`p-1.5 rounded-full transition-colors ${
+                        isTafsirVisible 
+                          ? (isTrueDark ? 'text-[#dfb26d] bg-[#dfb26d]/10' : 'text-primary-green bg-primary-green/10')
+                          : 'text-slate-500 hover:text-white'
+                      }`}
                       title="التفسير"
                     >
                       <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" /></svg>
@@ -157,7 +192,7 @@ export const QuranViewer: React.FC<QuranViewerProps> = ({
                       onClick={(e) => handleManualDownloadAyah(e, ayah)}
                       className={`p-1.5 rounded-full transition-colors ${
                         downloadedAyahs[ayah.numberInSurah]
-                          ? 'text-[#00b87c] bg-[#00b87c]/15'
+                          ? (isTrueDark ? 'text-[#dfb26d] bg-[#dfb26d]/15' : 'text-[#00b87c] bg-[#00b87c]/15')
                           : 'text-slate-500 hover:text-white'
                       }`}
                       title={downloadedAyahs[ayah.numberInSurah] ? `محفوظة أوفلاين في مجلد (${reciter.name})` : `حفظ الآية أوفلاين في مجلد (${reciter.name})`}
@@ -188,8 +223,15 @@ export const QuranViewer: React.FC<QuranViewerProps> = ({
                       verticalAlign: 'middle'
                     }}
                   >
-                    <div className="absolute inset-0 bg-[#0a2a1f] star-8 border border-[#00b87c]/30"></div>
-                    <span className="relative text-[#00b87c] font-bold" style={{ fontSize: `${settings.fontSize * 0.4}px` }}>
+                    <div className={`absolute inset-0 star-8 border ${
+                      isTrueDark 
+                        ? 'bg-[#18140f] border-[#dfb26d]/30' 
+                        : 'bg-[#0a2a1f] border-[#00b87c]/30'
+                    }`}></div>
+                    <span 
+                      className={`relative font-bold ${isTrueDark ? 'text-[#dfb26d]' : 'text-[#00b87c]'}`} 
+                      style={{ fontSize: `${settings.fontSize * 0.4}px` }}
+                    >
                       {ayah.numberInSurah}
                     </span>
                   </span>
@@ -197,12 +239,18 @@ export const QuranViewer: React.FC<QuranViewerProps> = ({
 
                 {/* Tafsir Card */}
                 {isTafsirVisible && ayah.tafsir && (
-                  <div className="w-full mt-4 bg-[#0a2a1f] border border-primary-green/20 rounded-2xl p-6 shadow-xl animate-fadeIn text-right" dir="rtl">
-                    <div className="flex items-center gap-2 mb-3 text-primary-green">
+                  <div className={`w-full mt-4 border rounded-2xl p-6 shadow-xl animate-fadeIn text-right ${
+                    isTrueDark 
+                      ? 'bg-[#12110e] border-[#dfb26d]/20 text-neutral-300' 
+                      : 'bg-[#0a2a1f] border-primary-green/20'
+                  }`} dir="rtl">
+                    <div className={`flex items-center gap-2 mb-3 ${isTrueDark ? 'text-[#dfb26d]' : 'text-primary-green'}`}>
                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
-                       <span className="font-bold text-xs uppercase tracking-widest">التفسير (الجلالين)</span>
+                       <span className="font-bold text-xs uppercase tracking-widest">
+                         {TAFSIR_EDITIONS.find(t => t.identifier === (settings.tafsirEdition || 'ar.muyassar'))?.name || 'التفسير'}
+                       </span>
                     </div>
-                    <p className="text-slate-300 text-sm leading-relaxed">{ayah.tafsir}</p>
+                    <p className={`text-sm leading-relaxed ${isTrueDark ? 'text-[#b8aa92]' : 'text-slate-300'}`}>{ayah.tafsir}</p>
                   </div>
                 )}
               </div>

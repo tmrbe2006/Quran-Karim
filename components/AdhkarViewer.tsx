@@ -26,8 +26,16 @@ function playBeadClick() {
   }
 }
 
-export const AdhkarViewer: React.FC = () => {
-  const [activeCategory, setActiveCategory] = useState<'morning' | 'evening' | 'after_prayer' | 'sleep'>('morning');
+interface AdhkarViewerProps {
+  initialCategory?: 'morning' | 'evening' | 'after_prayer' | 'sleep';
+}
+
+export const AdhkarViewer: React.FC<AdhkarViewerProps> = ({ initialCategory }) => {
+  const [activeCategory, setActiveCategory] = useState<'morning' | 'evening' | 'after_prayer' | 'sleep'>(() => {
+    if (initialCategory) return initialCategory;
+    const hour = new Date().getHours();
+    return (hour >= 4 && hour < 12) ? 'morning' : 'evening';
+  });
   const [counts, setCounts] = useState<Record<string, number>>(() => {
     try {
       const saved = localStorage.getItem('quran-adhkar-counts');

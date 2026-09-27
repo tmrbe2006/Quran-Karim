@@ -12,11 +12,16 @@ import { OfflineIndicator } from './components/OfflineIndicator';
 import { Surah, Ayah, Reciter, AppSettings, FavoriteAyah, BookmarkAyah, MemorizationState } from './types';
 import { RECITERS, API_BASE_URL, AUDIO_BASE_URL, DEFAULT_SETTINGS, SURAHS_LIST_FALLBACK } from './constants';
 import { OFFLINE_SURAHS_DATA } from './data/offlineSurahs';
-import { getOfflineSurahAyahs, searchInQuranOffline } from './utils/quranData';
+import { getOfflineSurahAyahs, searchInQuranOffline, getRandomQuranAyah } from './utils/quranData';
+import { AyahOfDayModal, DailyAyahData } from './components/AyahOfDayModal';
+import { PrayerTimesViewer } from './components/PrayerTimesViewer';
+import { ADHAN_VOICES, PRAYER_NAMES_AR, PrayerTimes, loadPrayerSettings } from './utils/prayerStorage';
 import { saveAyahAudio, getAyahAudio } from './utils/audioStorage';
+import { recordAyahRead, addListeningSeconds } from './utils/statsStorage';
+import { checkAdhkarTimeTriggers, loadNotificationSettings } from './utils/notificationService';
 import { GoogleGenAI } from "@google/genai";
 
-type TabType = 'surahs' | 'adhkar' | 'qibla' | 'favorites' | 'bookmarks' | 'search' | 'memorize' | 'about';
+type TabType = 'surahs' | 'adhkar' | 'qibla' | 'favorites' | 'bookmarks' | 'search' | 'memorize' | 'about' | 'statistics' | 'khatma' | 'prayer';
 
 const App: React.FC = () => {
   const [surahs, setSurahs] = useState<Surah[]>(SURAHS_LIST_FALLBACK);
@@ -36,6 +41,9 @@ const App: React.FC = () => {
   const [textDownloadProgress, setTextDownloadProgress] = useState<number | null>(null);
   const [audioDownloadProgress, setAudioDownloadProgress] = useState<number | null>(null);
   const [isAudioDownloading, setIsAudioDownloading] = useState(false);
+  const [sleepTimerSeconds, setSleepTimerSeconds] = useState<number | null>(null);
+  const [activeToast, setActiveToast] = useState<{ type: 'morning' | 'evening'; title: string; body: string } | null>(null);
+  const [adhkarCategory, setAdhkarCategory] = useState<'morning' | 'evening' | 'after_prayer' | 'sleep'>('morning');
   
   const [memorization, setMemorization] = useState<MemorizationState>({
     isActive: false, startAyah: 1, endAyah: 7, ayahRepetitions: 1, rangeRepetitions: 1, currentAyahRep: 0, currentRangeRep: 0, hideAyahs: false
@@ -77,6 +85,48 @@ const App: React.FC = () => {
     }
   });
 
+  // Ayah of the Day State & Fetcher
+  const [isAyahOfDayOpen, setIsAyahOfDayOpen] = useState(false);
+  const [ayahOfDayData, setAyahOfDayData] = useState<DailyAyahData | null>(null);
+  const [isAyahOfDayLoading, setIsAyahOfDayLoading] = useState(false);
+  
+  // Adhan state
+  const [isAdhanPlaying, setIsAdhanPlaying] = useState(false);
+
+  const fetchAyahOfDay = useCallback(async () => {
+    setIsAyahOfDayLoading(true);
+    try {
+      const randomAyah = await getRandomQuranAyah();
+      if (randomAyah) {
+        let tafsirText = '';
+        try {
+          const tafsirEdition = settings.tafsirEdition || 'ar.muyassar';
+          const tafsirRes = await fetch(`${API_BASE_URL}/ayah/${randomAyah.surahNumber}:${randomAyah.ayahNumberInSurah}/${tafsirEdition}`);
+          if (tafsirRes.ok) {
+            const tafsirJson = await tafsirRes.json();
+            tafsirText = tafsirJson?.data?.text || '';
+          }
+        } catch (err) {
+          console.warn('Failed to fetch tafsir online for Ayah of the Day:', err);
+        }
+
+        setAyahOfDayData({
+          ...randomAyah,
+          tafsir: tafsirText || 'التفسير متاح عند الاتصال بالشبكة'
+        });
+      }
+    } catch (e) {
+      console.warn('Failed to fetch Ayah of the Day:', e);
+    } finally {
+      setIsAyahOfDayLoading(false);
+    }
+  }, [settings.tafsirEdition]);
+
+  const handleOpenAyahOfDay = useCallback(() => {
+    setIsAyahOfDayOpen(true);
+    fetchAyahOfDay();
+  }, [fetchAyahOfDay]);
+
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const audioUrlRef = useRef<string | null>(null);
 
@@ -89,6 +139,212 @@ const App: React.FC = () => {
       localStorage.setItem('quran-favorite-surahs', JSON.stringify(favoriteSurahNumbers));
     } catch (e) {}
   }, [settings, favorites, bookmarks, favoriteSurahNumbers]);
+
+  // Sleep Timer Handler (Countdown and auto-pause)
+  useEffect(() => {
+    if (sleepTimerSeconds === null || sleepTimerSeconds <= 0) return;
+
+    const interval = setInterval(() => {
+      setSleepTimerSeconds(prev => {
+        if (prev === null || prev <= 1) {
+          setIsPlaying(false);
+          if (audioRef.current) audioRef.current.pause();
+          return null;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+
+    return () => clearInterval(interval);
+  }, [sleepTimerSeconds]);
+
+  // Track listening time in seconds while audio is playing
+  useEffect(() => {
+    if (!isPlaying) return;
+    const interval = setInterval(() => {
+      addListeningSeconds(1);
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [isPlaying]);
+
+  // Track currently viewed/played ayah in user reading stats
+  useEffect(() => {
+    if (selectedSurah && ayahs.length > 0 && ayahs[currentAyahIndex]) {
+      const ayah = ayahs[currentAyahIndex];
+      recordAyahRead(selectedSurah.number, ayah.numberInSurah);
+    }
+  }, [selectedSurah, currentAyahIndex, ayahs]);
+
+  // Periodic Local Time Check for Morning & Evening Adhkar Notifications
+  useEffect(() => {
+    const runCheck = () => {
+      const config = loadNotificationSettings();
+      checkAdhkarTimeTriggers(config, (type, title, body) => {
+        setActiveToast({ type, title, body });
+      });
+    };
+
+    runCheck();
+    // Check every 30 seconds
+    const interval = setInterval(runCheck, 30000);
+    return () => clearInterval(interval);
+  }, []);
+
+  // Periodic Prayer Times Checker for Adhan sound reminders
+  const adhanAudioRef = useRef<HTMLAudioElement | null>(null);
+
+  // Background Prayer Times Fetcher if cache is missing
+  useEffect(() => {
+    const fetchTimingsBackground = async () => {
+      try {
+        const cached = localStorage.getItem('quran_app_cached_prayer_times');
+        if (cached) return;
+
+        const pSettings = loadPrayerSettings();
+        let url = '';
+        if (pSettings.latitude && pSettings.longitude) {
+          url = `https://api.aladhan.com/v1/timings?latitude=${pSettings.latitude}&longitude=${pSettings.longitude}&method=${pSettings.method}`;
+        } else {
+          url = `https://api.aladhan.com/v1/timingsByCity?city=${encodeURIComponent(pSettings.city)}&country=${encodeURIComponent(pSettings.country)}&method=${pSettings.method}`;
+        }
+
+        const response = await fetch(url);
+        if (response.ok) {
+          const json = await response.json();
+          if (json?.data?.timings) {
+            const t = json.data.timings;
+            const mappedTimes = {
+              Fajr: t.Fajr,
+              Sunrise: t.Sunrise,
+              Dhuhr: t.Dhuhr,
+              Asr: t.Asr,
+              Maghrib: t.Maghrib,
+              Isha: t.Isha,
+              date: json.data.date.readable
+            };
+            localStorage.setItem('quran_app_cached_prayer_times', JSON.stringify(mappedTimes));
+          }
+        }
+      } catch (err) {
+        console.warn('Failed to fetch prayer timings in background', err);
+      }
+    };
+
+    fetchTimingsBackground();
+  }, []);
+
+  useEffect(() => {
+    const checkPrayerTimeAndTrigger = () => {
+      const pSettings = loadPrayerSettings();
+      let cachedTimes: PrayerTimes | null = null;
+      try {
+        const cached = localStorage.getItem('quran_app_cached_prayer_times');
+        if (cached) cachedTimes = JSON.parse(cached);
+      } catch {}
+
+      if (!cachedTimes) return;
+
+      const now = new Date();
+      const currentHours = now.getHours().toString().padStart(2, '0');
+      const currentMinutes = now.getMinutes().toString().padStart(2, '0');
+      const currentTimeStr = `${currentHours}:${currentMinutes}`;
+
+      const todayKey = `${now.getFullYear()}-${(now.getMonth() + 1).toString().padStart(2, '0')}-${now.getDate().toString().padStart(2, '0')}`;
+      const alertKey = `quran_app_last_prayer_alert_records`;
+      
+      let alertRecords: Record<string, boolean> = {};
+      try {
+        const stored = localStorage.getItem(alertKey);
+        if (stored) alertRecords = JSON.parse(stored);
+      } catch {}
+
+      const prayerKeys = ['Fajr', 'Dhuhr', 'Asr', 'Maghrib', 'Isha'];
+
+      for (const pKey of prayerKeys) {
+        let pTime = cachedTimes[pKey as keyof PrayerTimes] as string;
+        if (!pTime) continue;
+
+        pTime = pTime.trim().substring(0, 5);
+
+        if (pTime === currentTimeStr) {
+          const prayerTodayKey = `${todayKey}_${pKey}`;
+
+          if (!alertRecords[prayerTodayKey]) {
+            alertRecords[prayerTodayKey] = true;
+            localStorage.setItem(alertKey, JSON.stringify(alertRecords));
+
+            const rConfig = pSettings.reminders[pKey];
+            if (rConfig?.enabled) {
+              // 1. Pause any Quran recitation playing
+              setIsPlaying(false);
+              if (audioRef.current) {
+                audioRef.current.pause();
+              }
+
+              // 2. Play Custom Adhan Sound
+              const voice = ADHAN_VOICES.find(v => v.id === rConfig.voiceId) || ADHAN_VOICES[0];
+              if (voice) {
+                if (adhanAudioRef.current) {
+                  adhanAudioRef.current.pause();
+                }
+                const adhanAudio = new Audio(voice.url);
+                adhanAudio.play()
+                  .then(() => {
+                    adhanAudioRef.current = adhanAudio;
+                    setIsAdhanPlaying(true);
+                    adhanAudio.onended = () => {
+                      setIsAdhanPlaying(false);
+                    };
+                  })
+                  .catch(err => {
+                    console.warn('Adhan play error:', err);
+                  });
+              }
+
+              // 3. Native Browser Notification
+              const title = `🕌 حان وقت صلاة ${PRAYER_NAMES_AR[pKey]}`;
+              const body = `حان الآن موعد أذان ${PRAYER_NAMES_AR[pKey]} في مدينة ${pSettings.city}. حي على الصلاة، حي على الفلاح.`;
+
+              if ('Notification' in window && Notification.permission === 'granted') {
+                try {
+                  new Notification(title, {
+                    body,
+                    icon: '/icons/icon-192.png',
+                    dir: 'rtl',
+                    lang: 'ar'
+                  });
+                } catch {
+                  if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
+                    navigator.serviceWorker.ready.then(reg => {
+                      reg.showNotification(title, {
+                        body,
+                        icon: '/icons/icon-192.png',
+                        dir: 'rtl',
+                        lang: 'ar'
+                      });
+                    }).catch(() => {});
+                  }
+                }
+              }
+
+              // 4. Trigger Toast Notification
+              setActiveToast({
+                type: 'morning',
+                title,
+                body
+              });
+            }
+          }
+        }
+      }
+    };
+
+    // Run every 20 seconds
+    const checkInterval = setInterval(checkPrayerTimeAndTrigger, 20000);
+    return () => {
+      clearInterval(checkInterval);
+    };
+  }, []);
 
   // Bulk Downloader for Texts and Tafsirs (Offline Support)
   const downloadAllText = async () => {
@@ -294,27 +550,21 @@ const App: React.FC = () => {
     }
   }, [ayahs, currentAyahIndex, memorization]);
 
-  // Dynamic Ayah Loader (Surah Level with offline fallbacks)
+  // Dynamic Ayah Loader (Surah Level with offline fallbacks and selected Tafsir Edition)
   useEffect(() => {
     if (!selectedSurah) return;
     const ctrl = new AbortController();
     const loadContent = async () => {
       setIsLoading(true);
       try {
-        // 1. Try local offline bundled dataset first (instant 100% offline support for all 114 surahs)
-        const offlineAyahs = await getOfflineSurahAyahs(selectedSurah.number);
-        if (offlineAyahs && offlineAyahs.length > 0) {
-          setAyahs(offlineAyahs);
-          setCurrentAyahIndex(targetAyahIndex !== null ? targetAyahIndex : 0);
-          setTargetAyahIndex(null);
-          setIsLoading(false);
-          return;
-        }
+        const activeTafsirEdition = settings.tafsirEdition || 'ar.muyassar';
 
+        // 1. If using default offline jalalayn and no network, offline fallback is immediate
+        // But if user requested online tafsir (like ar.muyassar or ar.ibnkathir), we attempt fetching that edition
         let tData: any = null;
         let fData: any = null;
         const textUrl = `${API_BASE_URL}/surah/${selectedSurah.number}`;
-        const tafsirUrl = `${API_BASE_URL}/surah/${selectedSurah.number}/ar.jalalayn`;
+        const tafsirUrl = `${API_BASE_URL}/surah/${selectedSurah.number}/${activeTafsirEdition}`;
 
         // 2. Check browser cache
         if (typeof window !== 'undefined' && 'caches' in window) {
@@ -351,16 +601,7 @@ const App: React.FC = () => {
           }
         }
 
-        // 4. Fallback to basic offline dataset if network unavailable
-        if (!tData && OFFLINE_SURAHS_DATA[selectedSurah.number]) {
-          tData = {
-            data: {
-              ayahs: OFFLINE_SURAHS_DATA[selectedSurah.number]
-            }
-          };
-        }
-
-        // 5. Fetch tafsir online if not in cache (optional)
+        // 4. Fetch tafsir online for active edition if not in cache
         if (!fData) {
           try {
             const res = await fetch(tafsirUrl, { signal: ctrl.signal });
@@ -378,10 +619,30 @@ const App: React.FC = () => {
           } catch (e) {}
         }
 
+        // 5. Fallback to local offline bundled dataset if network failed
+        if (!tData) {
+          const offlineAyahs = await getOfflineSurahAyahs(selectedSurah.number, activeTafsirEdition);
+          if (offlineAyahs && offlineAyahs.length > 0) {
+            setAyahs(offlineAyahs);
+            setCurrentAyahIndex(targetAyahIndex !== null ? targetAyahIndex : 0);
+            setTargetAyahIndex(null);
+            setIsLoading(false);
+            return;
+          }
+
+          if (OFFLINE_SURAHS_DATA[selectedSurah.number]) {
+            tData = {
+              data: {
+                ayahs: OFFLINE_SURAHS_DATA[selectedSurah.number]
+              }
+            };
+          }
+        }
+
         if (tData?.data?.ayahs) {
           const merged = tData.data.ayahs.map((a: any, i: number) => ({
             ...a,
-            tafsir: fData?.data?.ayahs?.[i]?.text || a.tafsir || "التفسير محمل أوفلاين"
+            tafsir: fData?.data?.ayahs?.[i]?.text || a.tafsir || "التفسير متاح أوفلاين"
           }));
           setAyahs(merged);
           setCurrentAyahIndex(targetAyahIndex !== null ? targetAyahIndex : 0);
@@ -401,7 +662,7 @@ const App: React.FC = () => {
     };
     loadContent();
     return () => ctrl.abort();
-  }, [selectedSurah]);
+  }, [selectedSurah, settings.tafsirEdition]);
 
   // Audio Streaming Hub (Handles Cache-First Strategy)
   useEffect(() => {
@@ -512,32 +773,113 @@ const App: React.FC = () => {
     }
   };
 
+  const isTrueDark = !!settings.trueDarkMode;
+
   return (
-    <div className="flex h-screen overflow-hidden bg-[#051d14] font-sans selection:bg-[#00b87c]/30 max-w-md mx-auto shadow-2xl relative border-x border-white/5" dir="rtl">
+    <div className={`flex h-screen overflow-hidden font-sans max-w-md mx-auto shadow-2xl relative border-x transition-colors duration-500 ${
+      isTrueDark 
+        ? 'bg-[#000000] border-neutral-800/80 selection:bg-[#dfb26d]/30 text-amber-100' 
+        : 'bg-[#051d14] border-white/5 selection:bg-[#00b87c]/30 text-white'
+    }`} dir="rtl">
       <audio ref={audioRef} onEnded={handleNextAyah} preload="auto" />
       <OfflineIndicator />
+
+      {/* In-App Toast Notification for Adhkar Reminders */}
+      {activeToast && (
+        <div className="absolute top-4 inset-x-4 z-[99] animate-fadeIn" dir="rtl">
+          <div className={`p-4 rounded-3xl shadow-2xl border flex items-start gap-3 backdrop-blur-md ${
+            isTrueDark
+              ? 'bg-[#181510]/95 border-amber-500/40 text-amber-100 shadow-amber-950/40'
+              : 'bg-[#082a1e]/95 border-[#00b87c]/40 text-white shadow-black/40'
+          }`}>
+            <div className={`p-2.5 rounded-2xl shrink-0 text-xl ${
+              activeToast.type === 'morning' ? 'bg-amber-400/20 text-amber-300' : 'bg-indigo-400/20 text-indigo-300'
+            }`}>
+              {activeToast.type === 'morning' ? '☀️' : '🌙'}
+            </div>
+
+            <div className="flex-1 text-right">
+              <h4 className={`text-xs font-extrabold ${isTrueDark ? 'text-[#dfb26d]' : 'text-[#00b87c]'}`}>
+                {activeToast.title}
+              </h4>
+              <p className="text-[11px] text-slate-300 mt-1 leading-relaxed">
+                {activeToast.body}
+              </p>
+              
+              <div className="flex items-center gap-2 mt-2.5">
+                <button
+                  onClick={() => {
+                    setAdhkarCategory(activeToast.type);
+                    setActiveTab('adhkar');
+                    setSelectedSurah(null);
+                    setActiveToast(null);
+                  }}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all ${
+                    isTrueDark 
+                      ? 'bg-[#dfb26d] text-[#12110e] hover:bg-[#ebd095]' 
+                      : 'bg-[#00b87c] text-white hover:bg-[#00d892]'
+                  }`}
+                >
+                  قراءة الأذكار الآن
+                </button>
+                <button
+                  onClick={() => setActiveToast(null)}
+                  className="px-2.5 py-1.5 rounded-xl text-xs font-bold text-slate-400 hover:text-white transition-colors"
+                >
+                  إغلاق
+                </button>
+              </div>
+            </div>
+
+            <button
+              onClick={() => setActiveToast(null)}
+              className="text-slate-400 hover:text-white p-1 rounded-full"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          </div>
+        </div>
+      )}
 
       <div className="flex-1 flex flex-col relative overflow-hidden">
         {/* Main Content Area */}
         <div className="flex-1 overflow-hidden relative">
           {selectedSurah ? (
             <div className="h-full flex flex-col page-fade-in">
-              <header className="p-4 flex items-center justify-between bg-[#0a2a1f]/90 backdrop-blur border-b border-[#0f2d22] z-50">
+              <header className={`p-4 flex items-center justify-between backdrop-blur border-b z-50 transition-colors duration-500 ${
+                isTrueDark 
+                  ? 'bg-[#000000]/95 border-[#221c14]' 
+                  : 'bg-[#0a2a1f]/90 border-[#0f2d22]'
+              }`}>
                 <button
                   onClick={() => { setSelectedSurah(null); setIsPlaying(false); }}
-                  className="text-white bg-[#0f2d22] p-2 rounded-xl hover:bg-[#00b87c]/20 transition-colors"
+                  className={`p-2 rounded-xl transition-colors ${
+                    isTrueDark 
+                      ? 'text-amber-200/80 bg-[#16130e] hover:bg-[#252018]' 
+                      : 'text-white bg-[#0f2d22] hover:bg-[#00b87c]/20'
+                  }`}
                   title="العودة"
                 >
                   <svg className="w-5 h-5 rotate-180" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" /></svg>
                 </button>
                 <div className="text-center">
-                  <h2 className="font-bold quran-text text-xl text-[#00b87c]">{selectedSurah.name}</h2>
-                  <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest">{selectedSurah.englishName}</p>
+                  <h2 className={`font-bold quran-text text-xl transition-colors ${
+                    isTrueDark ? 'text-[#dfb26d]' : 'text-[#00b87c]'
+                  }`}>{selectedSurah.name}</h2>
+                  <p className={`text-[10px] font-bold uppercase tracking-widest ${
+                    isTrueDark ? 'text-amber-200/50' : 'text-slate-500'
+                  }`}>{selectedSurah.englishName}</p>
                 </div>
                 <div className="flex items-center gap-1.5">
                   <button
                     onClick={() => setIsSettingsOpen(true)}
-                    className="text-[#00b87c] bg-[#0f2d22] p-2 rounded-xl hover:bg-[#00b87c]/20 transition-colors"
+                    className={`p-2 rounded-xl transition-colors ${
+                      isTrueDark 
+                        ? 'text-[#dfb26d] bg-[#16130e] hover:bg-[#252018]' 
+                        : 'text-[#00b87c] bg-[#0f2d22] hover:bg-[#00b87c]/20'
+                    }`}
                     title="خيارات العرض والخط"
                   >
                     <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066" /></svg>
@@ -575,6 +917,9 @@ const App: React.FC = () => {
                     isPlaying={isPlaying} onTogglePlay={() => setIsPlaying(!isPlaying)}
                     onNext={handleNextAyah} onPrev={() => setCurrentAyahIndex(p => Math.max(0, p - 1))}
                     selectedReciter={reciter} onSelectReciter={setReciter}
+                    trueDarkMode={isTrueDark}
+                    sleepTimerSeconds={sleepTimerSeconds}
+                    onSetSleepTimer={(mins) => setSleepTimerSeconds(mins ? mins * 60 : null)}
                   />
                 </>
               )}
@@ -659,13 +1004,22 @@ const App: React.FC = () => {
                       isAudioDownloading={isAudioDownloading}
                       onOpenTab={(t) => setActiveTab(t as TabType)}
                       onOpenSettings={() => setIsSettingsOpen(true)}
+                      trueDarkMode={isTrueDark}
+                      onSelectJuzAyah={(surahNum, ayahNum) => {
+                        const s = surahs.find(x => x.number === surahNum);
+                        if (s) {
+                          setTargetAyahIndex(ayahNum - 1);
+                          setSelectedSurah(s);
+                        }
+                      }}
+                      onOpenAyahOfDay={handleOpenAyahOfDay}
                     />
                   </div>
                 </div>
               )}
 
               {activeTab === 'adhkar' && (
-                <AdhkarViewer />
+                <AdhkarViewer initialCategory={adhkarCategory} />
               )}
 
               {activeTab === 'qibla' && (
@@ -693,7 +1047,11 @@ const App: React.FC = () => {
                 />
               )}
 
-              {(activeTab === 'search' || activeTab === 'memorize' || activeTab === 'about') && (
+              {activeTab === 'prayer' && (
+                <PrayerTimesViewer trueDarkMode={isTrueDark} />
+              )}
+
+              {(activeTab === 'search' || activeTab === 'memorize' || activeTab === 'about' || activeTab === 'statistics' || activeTab === 'khatma') && (
                 <Sidebar 
                   surahs={surahs} 
                   selectedSurah={selectedSurah}
@@ -764,6 +1122,15 @@ const App: React.FC = () => {
                   isAudioDownloading={isAudioDownloading}
                   onOpenTab={(t) => setActiveTab(t as TabType)}
                   onOpenSettings={() => setIsSettingsOpen(true)}
+                  trueDarkMode={isTrueDark}
+                  onSelectJuzAyah={(surahNum, ayahNum) => {
+                    const s = surahs.find(x => x.number === surahNum);
+                    if (s) {
+                      setTargetAyahIndex(ayahNum - 1);
+                      setSelectedSurah(s);
+                    }
+                  }}
+                  onOpenAyahOfDay={handleOpenAyahOfDay}
                 />
               )}
             </>
@@ -771,14 +1138,28 @@ const App: React.FC = () => {
         </div>
 
         {/* Bottom Navigation Bar */}
-        <nav className="bg-[#07251a] border-t border-[#0f2d22] flex items-center justify-around py-2.5 pb-5 shrink-0 z-50 shadow-lg">
+        <nav className={`border-t flex items-center justify-around py-2.5 pb-5 shrink-0 z-50 shadow-lg transition-colors duration-500 ${
+          isTrueDark 
+            ? 'bg-[#000000] border-[#221c14]' 
+            : 'bg-[#07251a] border-[#0f2d22]'
+        }`}>
           {[
             {
               id: 'surahs',
-              label: 'المصحف',
+              label: 'السور',
               icon: (
                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
+                </svg>
+              ),
+              badge: null
+            },
+            {
+              id: 'prayer',
+              label: 'المواقيت',
+              icon: (
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
                 </svg>
               ),
               badge: null
@@ -802,29 +1183,12 @@ const App: React.FC = () => {
                 </svg>
               ),
               badge: null
-            },
-            {
-              id: 'favorites',
-              label: 'المفضلة',
-              icon: (
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.197-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.784-.57-.382-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z" />
-                </svg>
-              ),
-              badge: favorites.length > 0 ? favorites.length : null
-            },
-            {
-              id: 'bookmarks',
-              label: 'المرجعية',
-              icon: (
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z" />
-                </svg>
-              ),
-              badge: bookmarks.length > 0 ? bookmarks.length : null
             }
           ].map(t => {
             const isActive = activeTab === t.id && !selectedSurah;
+            const activeColorClass = isTrueDark ? 'text-[#dfb26d]' : 'text-[#00b87c]';
+            const activeBgClass = isTrueDark ? 'bg-[#dfb26d]/15 text-[#dfb26d]' : 'bg-[#00b87c]/15 text-[#00b87c]';
+
             return (
               <button
                 key={t.id}
@@ -833,11 +1197,13 @@ const App: React.FC = () => {
                   setSelectedSurah(null);
                 }}
                 className={`flex flex-col items-center gap-1 transition-all relative px-3 py-1 ${
-                  isActive ? 'text-[#00b87c] scale-105' : 'text-slate-400 hover:text-white'
+                  isActive 
+                    ? `${activeColorClass} scale-105` 
+                    : (isTrueDark ? 'text-amber-200/40 hover:text-amber-100' : 'text-slate-400 hover:text-white')
                 }`}
               >
                 <div className={`p-1.5 rounded-2xl relative transition-all ${
-                  isActive ? 'bg-[#00b87c]/15 text-[#00b87c]' : ''
+                  isActive ? activeBgClass : ''
                 }`}>
                   {t.icon}
                   {t.badge && (
@@ -846,7 +1212,7 @@ const App: React.FC = () => {
                     </span>
                   )}
                 </div>
-                <span className={`text-[10px] font-bold ${isActive ? 'text-[#00b87c]' : 'text-slate-400'}`}>
+                <span className={`text-[10px] font-bold ${isActive ? activeColorClass : (isTrueDark ? 'text-amber-200/50' : 'text-slate-400')}`}>
                   {t.label}
                 </span>
               </button>
@@ -861,6 +1227,57 @@ const App: React.FC = () => {
         settings={settings}
         onUpdateSettings={setSettings}
       />
+
+      <AyahOfDayModal
+        isOpen={isAyahOfDayOpen}
+        onClose={() => setIsAyahOfDayOpen(false)}
+        ayahData={ayahOfDayData}
+        onRefresh={fetchAyahOfDay}
+        isLoading={isAyahOfDayLoading}
+        trueDarkMode={isTrueDark}
+        onGoToAyah={(surahNumber, ayahNumberInSurah) => {
+          const s = surahs.find(x => x.number === surahNumber);
+          if (s) {
+            setTargetAyahIndex(ayahNumberInSurah - 1);
+            setSelectedSurah(s);
+          }
+        }}
+      />
+
+      {/* Floating Stop Adhan Button */}
+      {isAdhanPlaying && (
+        <div className="fixed bottom-24 left-4 right-4 z-[200] max-w-sm mx-auto animate-bounce text-right" dir="rtl">
+          <div className={`border text-white rounded-2xl p-4 shadow-2xl flex items-center justify-between gap-3 ${
+            isTrueDark ? 'bg-[#14120e] border-[#382d1f]' : 'bg-[#0a2a1f] border-emerald-500/30'
+          }`}>
+            <div className="flex items-center gap-3">
+              <div className={`w-10 h-10 rounded-xl flex items-center justify-center animate-pulse ${
+                isTrueDark ? 'bg-amber-500/20 text-[#dfb26d]' : 'bg-emerald-500/20 text-emerald-400'
+              }`}>
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.536 8.464a5 5 0 010 7.072m2.828-9.9a9 9 0 010 12.728M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z" />
+                </svg>
+              </div>
+              <div>
+                <span className="text-xs font-bold text-slate-200 block">صوت الأذان يرتفع الآن 🕌</span>
+                <span className="text-[10px] text-slate-400">حي على الصلاة، حي على الفلاح</span>
+              </div>
+            </div>
+            <button
+              onClick={() => {
+                if (adhanAudioRef.current) {
+                  adhanAudioRef.current.pause();
+                  adhanAudioRef.current = null;
+                }
+                setIsAdhanPlaying(false);
+              }}
+              className="px-3.5 py-1.5 bg-red-600/20 hover:bg-red-600 text-red-200 hover:text-white rounded-xl text-xs font-bold transition-all border border-red-500/20"
+            >
+              إيقاف الأذان
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

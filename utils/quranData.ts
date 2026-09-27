@@ -40,7 +40,7 @@ export async function getFullTafsirData(): Promise<any> {
 /**
  * Returns all ayahs of a surah from offline local files or cache
  */
-export async function getOfflineSurahAyahs(surahNumber: number): Promise<Ayah[] | null> {
+export async function getOfflineSurahAyahs(surahNumber: number, tafsirEdition: string = 'ar.jalalayn'): Promise<Ayah[] | null> {
   try {
     const [quranData, tafsirData] = await Promise.all([
       getFullQuranData(),
@@ -57,7 +57,7 @@ export async function getOfflineSurahAyahs(surahNumber: number): Promise<Ayah[] 
       text: a.text,
       numberInSurah: a.numberInSurah,
       juz: a.juz,
-      tafsir: tafsirSurah?.ayahs?.[idx]?.text || 'تفسير الجلالين'
+      tafsir: tafsirSurah?.ayahs?.[idx]?.text || 'التفسير محمل أوفلاين'
     }));
   } catch (e) {
     console.warn('getOfflineSurahAyahs failed', e);
@@ -110,3 +110,45 @@ export async function searchInQuranOffline(query: string, maxResults = 50): Prom
 
   return results;
 }
+
+/**
+ * Returns a random ayah from the entire Quran with its surah info
+ */
+export async function getRandomQuranAyah(): Promise<{
+  surahNumber: number;
+  surahName: string;
+  ayahNumberInSurah: number;
+  text: string;
+  tafsir?: string;
+} | null> {
+  try {
+    const quranData = await getFullQuranData();
+    if (!quranData?.data?.surahs) {
+      // Fallback: pick from offline surah data (Al-Fatiha or short surahs)
+      return {
+        surahNumber: 1,
+        surahName: "الفاتحة",
+        ayahNumberInSurah: 1,
+        text: "بِسْمِ اللَّهِ الرَّحْمَٰنِ الرَّحِيمِ",
+        tafsir: "أي أبتدئ قراءتي باسم الله مستعيناً به"
+      };
+    }
+
+    const surahs = quranData.data.surahs;
+    const randomSurah = surahs[Math.floor(Math.random() * surahs.length)];
+    if (!randomSurah || !randomSurah.ayahs || randomSurah.ayahs.length === 0) return null;
+
+    const randomAyah = randomSurah.ayahs[Math.floor(Math.random() * randomSurah.ayahs.length)];
+
+    return {
+      surahNumber: randomSurah.number,
+      surahName: randomSurah.name,
+      ayahNumberInSurah: randomAyah.numberInSurah,
+      text: randomAyah.text
+    };
+  } catch (e) {
+    console.warn('getRandomQuranAyah error:', e);
+    return null;
+  }
+}
+

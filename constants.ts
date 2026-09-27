@@ -16,10 +16,18 @@ export const RECITERS: Reciter[] = [
 export const AUDIO_BASE_URL = "https://everyayah.com/data";
 export const API_BASE_URL = "https://api.alquran.cloud/v1";
 
+export const TAFSIR_EDITIONS = [
+  { identifier: 'ar.muyassar', name: 'التفسير الميسر', author: 'نخبة من العلماء', default: true },
+  { identifier: 'ar.ibnkathir', name: 'تفسير ابن كثير', author: 'ابن كثير' },
+  { identifier: 'ar.jalalayn', name: 'تفسير الجلالين', author: 'جلال الدين المحلي والسيوطي' }
+];
+
 export const DEFAULT_SETTINGS = {
   fontSize: 32,
   textColor: "#1e293b",
-  backgroundColor: "#ffffff"
+  backgroundColor: "#ffffff",
+  trueDarkMode: false,
+  tafsirEdition: "ar.muyassar"
 };
 
 export const SURAHS_LIST_FALLBACK: Surah[] = [

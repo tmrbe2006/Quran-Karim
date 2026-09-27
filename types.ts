@@ -25,6 +25,8 @@ export interface AppSettings {
   fontSize: number;
   textColor: string;
   backgroundColor: string;
+  trueDarkMode?: boolean;
+  tafsirEdition?: string; // e.g. 'ar.muyassar' | 'ar.ibnkathir' | 'ar.jalalayn'
 }
 
 export interface FavoriteAyah {

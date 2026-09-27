@@ -2,6 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { Surah, FavoriteAyah, BookmarkAyah, MemorizationState, Reciter } from '../types';
 import { RECITERS, API_BASE_URL } from '../constants';
 import { ReciterStorageManager } from './ReciterStorageManager';
+import { StatsViewer } from './StatsViewer';
+import { KhatmaTracker } from './KhatmaTracker';
 
 const SAJDAHS = [
   { surah: 7, ayah: 206, name: "الأعراف" },
@@ -58,6 +60,9 @@ interface SidebarProps {
   isAudioDownloading?: boolean;
   onOpenTab?: (tab: string) => void;
   onOpenSettings?: () => void;
+  trueDarkMode?: boolean;
+  onSelectJuzAyah?: (surahNumber: number, ayahNumber: number) => void;
+  onOpenAyahOfDay?: () => void;
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({ 
@@ -87,7 +92,10 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onDownloadAllAudio,
   isAudioDownloading,
   onOpenTab,
-  onOpenSettings
+  onOpenSettings,
+  trueDarkMode = false,
+  onSelectJuzAyah,
+  onOpenAyahOfDay
 }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [surahFilterQuery, setSurahFilterQuery] = useState('');
@@ -150,6 +158,24 @@ export const Sidebar: React.FC<SidebarProps> = ({
               )}
               {onOpenTab && (
                 <button
+                  onClick={() => onOpenTab('khatma')}
+                  className="text-slate-300 hover:text-[#dfb26d] bg-[#0a2a1f] p-2 rounded-xl border border-white/5 transition-colors"
+                  title="متابعة ختمة القرآن الكريم"
+                >
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" /></svg>
+                </button>
+              )}
+              {onOpenTab && (
+                <button
+                  onClick={() => onOpenTab('statistics')}
+                  className="text-slate-300 hover:text-[#00b87c] bg-[#0a2a1f] p-2 rounded-xl border border-white/5 transition-colors"
+                  title="إحصائيات القراءة والاستماع"
+                >
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" /></svg>
+                </button>
+              )}
+              {onOpenTab && (
+                <button
                   onClick={() => onOpenTab('about')}
                   className="text-slate-300 hover:text-[#dfb26d] bg-[#0a2a1f] p-2 rounded-xl border border-white/5 transition-colors"
                   title="التحميل أوفلاين ومعلومات التطبيق"
@@ -183,6 +209,70 @@ export const Sidebar: React.FC<SidebarProps> = ({
               )}
             </div>
           </div>
+
+          {/* Ayah of the Day Quick Button */}
+          {onOpenAyahOfDay && (
+            <button
+              onClick={onOpenAyahOfDay}
+              className={`w-full hover:bg-emerald-950/20 rounded-2xl p-3.5 mb-3 text-right transition-all flex items-center justify-between group border ${
+                trueDarkMode 
+                  ? 'bg-[#14100a] border-[#292218] hover:bg-[#1a150e] hover:border-amber-500/30' 
+                  : 'bg-[#0a2a1f] border-[#0f2d22] hover:bg-[#0f3829] hover:border-[#00b87c]/30'
+              }`}
+              dir="rtl"
+            >
+              <div className="flex items-center gap-3">
+                <div className={`w-10 h-10 rounded-xl flex items-center justify-center transition-transform group-hover:scale-105 ${
+                  trueDarkMode ? 'bg-amber-400/10 text-[#dfb26d]' : 'bg-[#00b87c]/20 text-[#00b87c]'
+                }`}>
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z" />
+                  </svg>
+                </div>
+                <div>
+                  <span className="text-xs font-bold text-slate-200 block">آية اليوم المباركة</span>
+                  <span className="text-[10px] text-slate-400">انقر لتدبر آية عشوائية ومشاركتها</span>
+                </div>
+              </div>
+              <span className={`text-xs font-bold flex items-center gap-1 group-hover:translate-x-[-4px] transition-transform ${
+                trueDarkMode ? 'text-[#dfb26d]' : 'text-[#00b87c]'
+              }`}>
+                فتح ➔
+              </span>
+            </button>
+          )}
+
+          {/* Prayer Times & Adhan Quick Button */}
+          {onOpenTab && (
+            <button
+              onClick={() => onOpenTab('prayer')}
+              className={`w-full hover:bg-emerald-950/20 rounded-2xl p-3.5 mb-5 text-right transition-all flex items-center justify-between group border ${
+                trueDarkMode 
+                  ? 'bg-[#14100a] border-[#292218] hover:bg-[#1a150e] hover:border-amber-500/30' 
+                  : 'bg-[#0a2a1f] border-[#0f2d22] hover:bg-[#0f3829] hover:border-[#00b87c]/30'
+              }`}
+              dir="rtl"
+            >
+              <div className="flex items-center gap-3">
+                <div className={`w-10 h-10 rounded-xl flex items-center justify-center transition-transform group-hover:scale-105 ${
+                  trueDarkMode ? 'bg-amber-400/10 text-[#dfb26d]' : 'bg-[#00b87c]/20 text-[#00b87c]'
+                }`}>
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                </div>
+                <div>
+                  <span className="text-xs font-bold text-slate-200 block">مواقيت الصلاة وتخصيص الأذان</span>
+                  <span className="text-[10px] text-slate-400">تنبيهات الآذان وتجربة الأصوات المختلفة</span>
+                </div>
+              </div>
+              <span className={`text-xs font-bold flex items-center gap-1 group-hover:translate-x-[-4px] transition-transform ${
+                trueDarkMode ? 'text-[#dfb26d]' : 'text-[#00b87c]'
+              }`}>
+                فتح ➔
+              </span>
+            </button>
+          )}
 
           <div className="relative mb-6 text-right" dir="rtl">
             <input 
@@ -538,29 +628,19 @@ export const Sidebar: React.FC<SidebarProps> = ({
           )}
 
           {activeTab === 'statistics' && (
-            <div className="pt-4 px-2">
-              <h2 className="text-xl font-bold mb-6 text-center text-[#dfb26d]">إحصائيات قرآنية</h2>
-              <div className="grid grid-cols-2 gap-4">
-                {[
-                  { label: 'عدد السور', value: '114', sub: 'سورة' },
-                  { label: 'عدد الآيات', value: '6236', sub: 'آية' },
-                  { label: 'عدد الأجزاء', value: '30', sub: 'جزء' },
-                  { label: 'عدد الأحزاب', value: '60', sub: 'حزب' },
-                  { label: 'عدد الأرباع', value: '240', sub: 'ربع' },
-                  { label: 'عدد السجدات', value: '15', sub: 'سجدة' },
-                  { label: 'عدد الكلمات', value: '77,430', sub: 'كلمة تقريباً' },
-                  { label: 'عدد الحروف', value: '323,671', sub: 'حرف تقريباً' },
-                  { label: 'المنازل', value: '7', sub: 'منزل' },
-                  { label: 'مدة التنزيل', value: '23', sub: 'سنة' }
-                ].map((stat, i) => (
-                  <div key={i} className="bg-[#0a2a1f] p-4 rounded-2xl border border-[#0f2d22] text-center hover:border-[#00b87c]/30 transition-all">
-                    <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest mb-1">{stat.label}</p>
-                    <div className="text-[#00b87c] text-xl font-bold">{stat.value}</div>
-                    <p className="text-[8px] text-slate-400 mt-1">{stat.sub}</p>
-                  </div>
-                ))}
-              </div>
-            </div>
+            <StatsViewer 
+              onBackToSurahs={onOpenTab ? () => onOpenTab('surahs') : undefined}
+              onOpenKhatma={onOpenTab ? () => onOpenTab('khatma') : undefined}
+              trueDarkMode={trueDarkMode}
+            />
+          )}
+
+          {activeTab === 'khatma' && (
+            <KhatmaTracker 
+              onBackToSurahs={onOpenTab ? () => onOpenTab('surahs') : undefined}
+              onSelectJuzAyah={onSelectJuzAyah}
+              trueDarkMode={trueDarkMode}
+            />
           )}
 
           {activeTab === 'about' && (
