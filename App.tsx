@@ -30,7 +30,24 @@ const App: React.FC = () => {
   const [currentAyahIndex, setCurrentAyahIndex] = useState(0);
   const [targetAyahIndex, setTargetAyahIndex] = useState<number | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
-  const [reciter, setReciter] = useState<Reciter>(RECITERS[0]);
+  const [reciter, setReciterState] = useState<Reciter>(() => {
+    try {
+      const savedId = localStorage.getItem('quran-selected-reciter-id');
+      if (savedId) {
+        const found = RECITERS.find(r => r.id === savedId || r.identifier === savedId);
+        if (found) return found;
+      }
+    } catch {}
+    return RECITERS[0];
+  });
+
+  const setReciter = useCallback((newReciter: Reciter) => {
+    setReciterState(newReciter);
+    try {
+      localStorage.setItem('quran-selected-reciter-id', newReciter.id);
+    } catch {}
+  }, []);
+
   const [isLoading, setIsLoading] = useState(false);
   const [activeTab, setActiveTab] = useState<TabType>('surahs');
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
@@ -727,6 +744,27 @@ const App: React.FC = () => {
     return () => ctrl.abort();
   }, [selectedSurah, settings.tafsirEdition]);
 
+  // User-gesture safe audio triggers for Mobile iOS & Android
+  const handleTogglePlay = useCallback(() => {
+    if (!isPlaying) {
+      if (audioRef.current) {
+        audioRef.current.play().catch(() => {});
+      }
+      setIsPlaying(true);
+    } else {
+      setIsPlaying(false);
+      audioRef.current?.pause();
+    }
+  }, [isPlaying]);
+
+  const handleAyahClick = useCallback((idx: number) => {
+    if (audioRef.current) {
+      audioRef.current.play().catch(() => {});
+    }
+    setCurrentAyahIndex(idx);
+    setIsPlaying(true);
+  }, []);
+
   // Audio Streaming Hub (Handles Cache-First Strategy)
   useEffect(() => {
     if (!audioRef.current || !isPlaying || ayahs.length === 0) { audioRef.current?.pause(); return; }
@@ -762,15 +800,24 @@ const App: React.FC = () => {
 
         if (blob) {
           const bUrl = URL.createObjectURL(blob);
-          if (audioUrlRef.current) URL.revokeObjectURL(audioUrlRef.current);
+          const oldUrl = audioUrlRef.current;
           audioUrlRef.current = bUrl;
           if (audioRef.current) {
             audioRef.current.src = bUrl;
-            audioRef.current.play().catch(() => {});
+            audioRef.current.load();
+            audioRef.current.play().catch((err) => {
+              console.warn('Offline blob playback error:', err);
+            });
+          }
+          if (oldUrl) {
+            setTimeout(() => {
+              try { URL.revokeObjectURL(oldUrl); } catch {}
+            }, 6000);
           }
         } else if (audioRef.current) {
           // Fallback to direct url stream
           audioRef.current.src = audioUrl;
+          audioRef.current.load();
           audioRef.current.play().catch(() => {});
         }
       } catch (e) {
@@ -844,7 +891,7 @@ const App: React.FC = () => {
         ? 'bg-[#000000] border-neutral-800/80 selection:bg-[#dfb26d]/30 text-amber-100' 
         : 'bg-[#051d14] border-white/5 selection:bg-[#00b87c]/30 text-white'
     }`} dir="rtl">
-      <audio ref={audioRef} onEnded={handleNextAyah} preload="auto" />
+      <audio ref={audioRef} onEnded={handleNextAyah} preload="auto" playsInline={true} />
       <OfflineIndicator />
 
       {/* In-App Toast Notification for Adhkar Reminders */}
@@ -970,14 +1017,14 @@ const App: React.FC = () => {
                 <>
                   <QuranViewer 
                     surah={selectedSurah} ayahs={ayahs} currentAyahIndex={currentAyahIndex}
-                    onAyahClick={(idx) => { setCurrentAyahIndex(idx); setIsPlaying(true); }} 
+                    onAyahClick={handleAyahClick} 
                     isLoading={isLoading} settings={settings}
                     favorites={favorites} onToggleFavorite={handleToggleFavorite} 
                     bookmarks={bookmarks} onToggleBookmark={handleToggleBookmark}
                     memorization={memorization} reciter={reciter}
                   />
                   <Controls 
-                    isPlaying={isPlaying} onTogglePlay={() => setIsPlaying(!isPlaying)}
+                    isPlaying={isPlaying} onTogglePlay={handleTogglePlay}
                     onNext={handleNextAyah} onPrev={() => setCurrentAyahIndex(p => Math.max(0, p - 1))}
                     selectedReciter={reciter} onSelectReciter={setReciter}
                     trueDarkMode={isTrueDark}

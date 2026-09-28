@@ -69,17 +69,6 @@ export default defineConfig(({ mode }) => {
             skipWaiting: true,
             runtimeCaching: [
               {
-                urlPattern: ({ request }) => request.mode === 'navigate',
-                handler: 'NetworkFirst',
-                options: {
-                  cacheName: 'html-cache',
-                  networkTimeoutSeconds: 3,
-                  cacheableResponse: {
-                    statuses: [0, 200],
-                  },
-                },
-              },
-              {
                 urlPattern: ({ url }) => url.pathname.startsWith('/data/'),
                 handler: 'CacheFirst',
                 options: {
@@ -156,8 +145,22 @@ export default defineConfig(({ mode }) => {
                 options: {
                   cacheName: 'quran-audio-cache',
                   expiration: {
-                    maxEntries: 500,
-                    maxAgeSeconds: 60 * 60 * 24 * 90,
+                    maxEntries: 2000,
+                    maxAgeSeconds: 60 * 60 * 24 * 180,
+                  },
+                  cacheableResponse: {
+                    statuses: [0, 200],
+                  },
+                },
+              },
+              {
+                urlPattern: /^https:\/\/cdn\.islamic\.network\/quran\/audio\/.*/i,
+                handler: 'CacheFirst',
+                options: {
+                  cacheName: 'quran-audio-cache',
+                  expiration: {
+                    maxEntries: 2000,
+                    maxAgeSeconds: 60 * 60 * 24 * 180,
                   },
                   cacheableResponse: {
                     statuses: [0, 200],
