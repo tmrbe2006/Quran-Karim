@@ -19,7 +19,6 @@ import { ADHAN_VOICES, PRAYER_NAMES_AR, PrayerTimes, loadPrayerSettings } from '
 import { saveAyahAudio, getAyahAudio } from './utils/audioStorage';
 import { recordAyahRead, addListeningSeconds } from './utils/statsStorage';
 import { checkAdhkarTimeTriggers, loadNotificationSettings } from './utils/notificationService';
-import { GoogleGenAI } from "@google/genai";
 
 type TabType = 'surahs' | 'adhkar' | 'qibla' | 'favorites' | 'bookmarks' | 'search' | 'memorize' | 'about' | 'statistics' | 'khatma' | 'prayer';
 
@@ -1078,7 +1077,6 @@ const App: React.FC = () => {
                       onSearch={async (q) => {
                         setIsSearchLoading(true);
                         try {
-                          // Try offline instant search first
                           const localMatches = await searchInQuranOffline(q);
                           if (localMatches && localMatches.length > 0) {
                             setSearchResults(localMatches.map((x: any) => ({
@@ -1089,20 +1087,9 @@ const App: React.FC = () => {
                             setIsSearchLoading(false);
                             return localMatches;
                           }
-
-                          // If online and process.env.API_KEY is available, fallback to AI semantic search
-                          if (navigator.onLine && process.env.API_KEY) {
-                            const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-                            const r = await ai.models.generateContent({
-                              model: 'gemini-3-flash-preview',
-                              contents: `ابحث في القرآن عن "${q}". ارجع JSON فقط: [{"surahNumber": 1, "surahName": "الفاتحة", "numberInSurah": 1, "text": "..."}]`,
-                              config: { responseMimeType: "application/json" }
-                            });
-                            const res = JSON.parse(r.text || "[]");
-                            setSearchResults(res.map((x: any) => ({ text: x.text, numberInSurah: x.numberInSurah, surah: { number: x.surahNumber, name: x.surahName } })));
-                            setIsSearchLoading(false);
-                            return res;
-                          }
+                          setSearchResults([]);
+                          setIsSearchLoading(false);
+                          return [];
                         } catch (e) {
                           console.warn('Search failed:', e);
                         }
@@ -1196,7 +1183,6 @@ const App: React.FC = () => {
                   onSearch={async (q) => {
                     setIsSearchLoading(true);
                     try {
-                      // Try offline instant search first
                       const localMatches = await searchInQuranOffline(q);
                       if (localMatches && localMatches.length > 0) {
                         setSearchResults(localMatches.map((x: any) => ({
@@ -1207,20 +1193,9 @@ const App: React.FC = () => {
                         setIsSearchLoading(false);
                         return localMatches;
                       }
-
-                      // If online and process.env.API_KEY is available, fallback to AI semantic search
-                      if (navigator.onLine && process.env.API_KEY) {
-                        const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-                        const r = await ai.models.generateContent({
-                          model: 'gemini-3-flash-preview',
-                          contents: `ابحث في القرآن عن "${q}". ارجع JSON فقط: [{"surahNumber": 1, "surahName": "الفاتحة", "numberInSurah": 1, "text": "..."}]`,
-                          config: { responseMimeType: "application/json" }
-                        });
-                        const res = JSON.parse(r.text || "[]");
-                        setSearchResults(res.map((x: any) => ({ text: x.text, numberInSurah: x.numberInSurah, surah: { number: x.surahNumber, name: x.surahName } })));
-                        setIsSearchLoading(false);
-                        return res;
-                      }
+                      setSearchResults([]);
+                      setIsSearchLoading(false);
+                      return [];
                     } catch (e) {
                       console.warn('Search failed:', e);
                     }

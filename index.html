@@ -1,6 +1,44 @@
 <!DOCTYPE html>
 <html lang="ar" dir="rtl">
 <head>
+    <script>
+      (function() {
+        try {
+          var _currentFetch = typeof window !== 'undefined' ? window.fetch : null;
+          var curr = typeof window !== 'undefined' ? window : null;
+          while (curr) {
+            try {
+              var desc = Object.getOwnPropertyDescriptor(curr, 'fetch');
+              if (desc) {
+                if (desc.configurable) {
+                  Object.defineProperty(curr, 'fetch', {
+                    configurable: true,
+                    enumerable: true,
+                    get: function() { return _currentFetch; },
+                    set: function(fn) { _currentFetch = fn; }
+                  });
+                }
+                break;
+              }
+            } catch (err) {}
+            curr = Object.getPrototypeOf(curr);
+          }
+          if (typeof window !== 'undefined') {
+            try {
+              var winDesc = Object.getOwnPropertyDescriptor(window, 'fetch');
+              if (!winDesc || winDesc.configurable) {
+                Object.defineProperty(window, 'fetch', {
+                  configurable: true,
+                  enumerable: true,
+                  get: function() { return _currentFetch; },
+                  set: function(fn) { _currentFetch = fn; }
+                });
+              }
+            } catch (err) {}
+          }
+        } catch (e) {}
+      })();
+    </script>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>القرآن الكريم - المصحف الرقمي</title>
