@@ -210,69 +210,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
             </div>
           </div>
 
-          {/* Ayah of the Day Quick Button */}
-          {onOpenAyahOfDay && (
-            <button
-              onClick={onOpenAyahOfDay}
-              className={`w-full hover:bg-emerald-950/20 rounded-2xl p-3.5 mb-3 text-right transition-all flex items-center justify-between group border ${
-                trueDarkMode 
-                  ? 'bg-[#14100a] border-[#292218] hover:bg-[#1a150e] hover:border-amber-500/30' 
-                  : 'bg-[#0a2a1f] border-[#0f2d22] hover:bg-[#0f3829] hover:border-[#00b87c]/30'
-              }`}
-              dir="rtl"
-            >
-              <div className="flex items-center gap-3">
-                <div className={`w-10 h-10 rounded-xl flex items-center justify-center transition-transform group-hover:scale-105 ${
-                  trueDarkMode ? 'bg-amber-400/10 text-[#dfb26d]' : 'bg-[#00b87c]/20 text-[#00b87c]'
-                }`}>
-                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z" />
-                  </svg>
-                </div>
-                <div>
-                  <span className="text-xs font-bold text-slate-200 block">آية اليوم المباركة</span>
-                  <span className="text-[10px] text-slate-400">انقر لتدبر آية عشوائية ومشاركتها</span>
-                </div>
-              </div>
-              <span className={`text-xs font-bold flex items-center gap-1 group-hover:translate-x-[-4px] transition-transform ${
-                trueDarkMode ? 'text-[#dfb26d]' : 'text-[#00b87c]'
-              }`}>
-                فتح ➔
-              </span>
-            </button>
-          )}
 
-          {/* Prayer Times & Adhan Quick Button */}
-          {onOpenTab && (
-            <button
-              onClick={() => onOpenTab('prayer')}
-              className={`w-full hover:bg-emerald-950/20 rounded-2xl p-3.5 mb-5 text-right transition-all flex items-center justify-between group border ${
-                trueDarkMode 
-                  ? 'bg-[#14100a] border-[#292218] hover:bg-[#1a150e] hover:border-amber-500/30' 
-                  : 'bg-[#0a2a1f] border-[#0f2d22] hover:bg-[#0f3829] hover:border-[#00b87c]/30'
-              }`}
-              dir="rtl"
-            >
-              <div className="flex items-center gap-3">
-                <div className={`w-10 h-10 rounded-xl flex items-center justify-center transition-transform group-hover:scale-105 ${
-                  trueDarkMode ? 'bg-amber-400/10 text-[#dfb26d]' : 'bg-[#00b87c]/20 text-[#00b87c]'
-                }`}>
-                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                  </svg>
-                </div>
-                <div>
-                  <span className="text-xs font-bold text-slate-200 block">مواقيت الصلاة وتخصيص الأذان</span>
-                  <span className="text-[10px] text-slate-400">تنبيهات الآذان وتجربة الأصوات المختلفة</span>
-                </div>
-              </div>
-              <span className={`text-xs font-bold flex items-center gap-1 group-hover:translate-x-[-4px] transition-transform ${
-                trueDarkMode ? 'text-[#dfb26d]' : 'text-[#00b87c]'
-              }`}>
-                فتح ➔
-              </span>
-            </button>
-          )}
 
           <div className="relative mb-6 text-right" dir="rtl">
             <input 

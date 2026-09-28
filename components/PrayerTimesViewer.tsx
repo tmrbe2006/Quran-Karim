@@ -46,23 +46,55 @@ export const PrayerTimesViewer: React.FC<PrayerTimesViewerProps> = ({ trueDarkMo
   const [nextPrayerTimeLeft, setNextPrayerTimeLeft] = useState<string>('');
   const [activePrayerKey, setActivePrayerKey] = useState<string>('');
 
+  const [selectedAdhanTestId, setSelectedAdhanTestId] = useState<string>('makkah');
+
+  const handleApplyToAllPrayers = () => {
+    const r = { ...settings.reminders };
+    const prayerKeys = ['Fajr', 'Dhuhr', 'Asr', 'Maghrib', 'Isha'];
+    prayerKeys.forEach(key => {
+      r[key] = {
+        enabled: true, // enable globally
+        voiceId: selectedAdhanTestId
+      };
+    });
+    updateSettings({ ...settings, reminders: r });
+    alert('تم تفعيل وتطبيق صوت الأذان المختار على جميع الصلوات الخمس بنجاح!');
+  };
+
   // Save settings when changed
   const updateSettings = (newSettings: PrayerSetting) => {
     setSettings(newSettings);
     savePrayerSettings(newSettings);
   };
 
+  // Web Audio API and fallback refs
+  const audioCtxRef = useRef<AudioContext | null>(null);
+  const sourceNodeRef = useRef<AudioBufferSourceNode | null>(null);
+  const gainNodeRef = useRef<GainNode | null>(null);
+  const [loadingAudioId, setLoadingAudioId] = useState<string | null>(null);
+
   // Stop audio preview
   const stopAudioPreview = () => {
+    // 1. Stop Web Audio API
+    if (sourceNodeRef.current) {
+      try {
+        sourceNodeRef.current.stop();
+      } catch (e) {}
+      sourceNodeRef.current = null;
+    }
+    // 2. Stop HTML5 Fallback Audio
     if (previewAudioRef.current) {
-      previewAudioRef.current.pause();
+      try {
+        previewAudioRef.current.pause();
+      } catch (e) {}
       previewAudioRef.current = null;
     }
     setPlayingPreviewId(null);
+    setLoadingAudioId(null);
   };
 
-  // Play audio preview
-  const handlePlayPreview = (voiceId: string) => {
+  // Play audio preview using Web Audio API
+  const handlePlayPreview = async (voiceId: string) => {
     if (playingPreviewId === voiceId) {
       stopAudioPreview();
       return;
@@ -72,18 +104,74 @@ export const PrayerTimesViewer: React.FC<PrayerTimesViewerProps> = ({ trueDarkMo
     const voice = ADHAN_VOICES.find(v => v.id === voiceId);
     if (!voice) return;
 
-    const audio = new Audio(voice.url);
-    audio.play()
-      .then(() => {
-        previewAudioRef.current = audio;
-        setPlayingPreviewId(voiceId);
-        audio.onended = () => {
-          setPlayingPreviewId(null);
-        };
-      })
-      .catch((e) => {
-        console.warn('Failed to play adhan preview', e);
-      });
+    setLoadingAudioId(voiceId);
+
+    try {
+      // 1. Initialize AudioContext
+      if (!audioCtxRef.current) {
+        audioCtxRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
+      }
+      const ctx = audioCtxRef.current;
+      if (ctx.state === 'suspended') {
+        await ctx.resume();
+      }
+
+      // 2. Fetch the audio file as ArrayBuffer
+      const response = await fetch(voice.url);
+      if (!response.ok) throw new Error('Failed to fetch audio stream');
+      const arrayBuffer = await response.arrayBuffer();
+
+      // 3. Decode the audio data asynchronously
+      const decodedBuffer = await ctx.decodeAudioData(arrayBuffer);
+
+      // Check if user clicked stop or switched to another audio while decoding was running
+      if (loadingAudioId !== voiceId && playingPreviewId !== null) return;
+
+      // 4. Create and configure Buffer Source & Gain Node
+      const source = ctx.createBufferSource();
+      source.buffer = decodedBuffer;
+
+      const gainNode = ctx.createGain();
+      gainNode.gain.setValueAtTime(0.85, ctx.currentTime); // Sweet and clear volume
+
+      source.connect(gainNode);
+      gainNode.connect(ctx.destination);
+
+      // 5. Start playing and update state
+      source.start(0);
+      sourceNodeRef.current = source;
+      gainNodeRef.current = gainNode;
+      setPlayingPreviewId(voiceId);
+      setLoadingAudioId(null);
+
+      source.onended = () => {
+        setPlayingPreviewId(current => current === voiceId ? null : current);
+      };
+    } catch (err) {
+      console.warn('Web Audio API decode failed, switching to fallback HTML5 player:', err);
+      
+      // Fallback HTML5 play
+      try {
+        const audio = new Audio(voice.url);
+        audio.volume = 0.85;
+        audio.play()
+          .then(() => {
+            previewAudioRef.current = audio;
+            setPlayingPreviewId(voiceId);
+            setLoadingAudioId(null);
+            audio.onended = () => {
+              setPlayingPreviewId(current => current === voiceId ? null : current);
+            };
+          })
+          .catch(fallbackErr => {
+            console.error('HTML5 audio play failed too:', fallbackErr);
+            setLoadingAudioId(null);
+          });
+      } catch (fallbackErr) {
+        console.error('Audio initialization failed:', fallbackErr);
+        setLoadingAudioId(null);
+      }
+    }
   };
 
   // Fetch Prayer Times
@@ -383,6 +471,99 @@ export const PrayerTimesViewer: React.FC<PrayerTimesViewerProps> = ({ trueDarkMo
         </div>
       </div>
 
+      {/* Dedicated Adhan Selector and Web Audio API Test Card */}
+      <div className={`p-6 rounded-3xl border transition-all shadow-xl shadow-[#00b87c]/5 relative overflow-hidden text-right ${
+        trueDarkMode ? 'bg-[#14120e] border-[#251e15]' : 'bg-[#0a2a1f] border-[#0f2d22]'
+      }`} dir="rtl">
+        <div className="absolute top-0 left-0 w-32 h-32 bg-emerald-500/5 rounded-full blur-2xl pointer-events-none" />
+        
+        <div className="flex items-center gap-3 border-b border-white/5 pb-3 mb-4">
+          <div className={`w-9 h-9 rounded-xl flex items-center justify-center ${
+            trueDarkMode ? 'bg-amber-400/10 text-[#dfb26d]' : 'bg-emerald-500/10 text-emerald-400'
+          }`}>
+            <svg className="w-5 h-5 animate-swing" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.536 8.464a5 5 0 010 7.072m2.828-9.9a9 9 0 010 12.728M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z" />
+            </svg>
+          </div>
+          <div>
+            <h3 className="text-sm font-black text-slate-200">🕋 مُخصِّص ومنبه الأذان الموحد (تجربته واختياره)</h3>
+            <p className="text-[10px] text-slate-400">اختر صوت الأذان المفضل، جربه عبر Web Audio API وطبّقه على كل الصلوات دفعة واحدة</p>
+          </div>
+        </div>
+
+        <div className="space-y-4">
+          <div>
+            <label className="text-xs font-bold text-slate-300 block mb-2">اختر الأذان الذي تود تجريبه واعتماده:</label>
+            <select
+              value={selectedAdhanTestId}
+              onChange={(e) => setSelectedAdhanTestId(e.target.value)}
+              className="w-full bg-black/40 border border-white/10 rounded-2xl py-3 px-4 text-xs font-bold text-slate-200 focus:outline-none focus:ring-1 focus:ring-[#00b87c] cursor-pointer hover:border-white/20 transition-all"
+            >
+              {ADHAN_VOICES.map((v) => (
+                <option key={v.id} value={v.id} className="bg-[#051d14] text-slate-200">{v.name}</option>
+              ))}
+            </select>
+          </div>
+
+          <div className="flex flex-col sm:flex-row gap-3 pt-1">
+            {/* Play/Stop Test Button using Web Audio API */}
+            <button
+              type="button"
+              onClick={() => handlePlayPreview(selectedAdhanTestId)}
+              disabled={loadingAudioId === selectedAdhanTestId}
+              className={`flex-1 py-3 px-4 rounded-2xl font-bold text-xs flex items-center justify-center gap-2 border transition-all ${
+                playingPreviewId === selectedAdhanTestId
+                  ? 'bg-red-600/20 border-red-500 text-red-200 hover:text-white'
+                  : trueDarkMode
+                    ? 'bg-amber-500/10 border-amber-500/20 text-[#dfb26d] hover:bg-amber-500/20'
+                    : 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400 hover:bg-emerald-500/20'
+              } ${loadingAudioId === selectedAdhanTestId ? 'opacity-75 cursor-wait' : ''}`}
+            >
+              {loadingAudioId === selectedAdhanTestId ? (
+                <>
+                  <div className={`w-4 h-4 rounded-full border border-t-transparent animate-spin ${
+                    trueDarkMode ? 'border-amber-400' : 'border-emerald-400'
+                  }`} />
+                  <span>جاري فك الترميز والتحضير...</span>
+                </>
+              ) : playingPreviewId === selectedAdhanTestId ? (
+                <>
+                  <svg className="w-4 h-4 text-red-400 animate-pulse" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M9 10a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1h-4a1 1 0 01-1-1v-4z" />
+                  </svg>
+                  <span>إيقاف التشغيل التجريبي</span>
+                </>
+              ) : (
+                <>
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                  <span>استمع للتجربة (Web Audio API)</span>
+                </>
+              )}
+            </button>
+
+            {/* Apply Globally Button */}
+            <button
+              type="button"
+              onClick={handleApplyToAllPrayers}
+              className={`py-3 px-4 rounded-2xl font-bold text-xs border transition-all text-center flex items-center justify-center gap-2 ${
+                trueDarkMode
+                  ? 'bg-amber-500/20 border-amber-500 hover:bg-amber-500 hover:text-black text-amber-300'
+                  : 'bg-emerald-500/20 border-emerald-500 hover:bg-[#00b87c] hover:text-white text-emerald-300'
+              }`}
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
+              </svg>
+              <span>تطبيق على كافة الصلوات الخمس</span>
+            </button>
+          </div>
+        </div>
+      </div>
+
       {errorMsg && (
         <div className="p-3.5 rounded-2xl bg-amber-500/10 border border-amber-500/20 text-xs text-amber-200 flex items-center gap-2">
           <svg className="w-5 h-5 shrink-0 text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -492,10 +673,7 @@ export const PrayerTimesViewer: React.FC<PrayerTimesViewerProps> = ({ trueDarkMo
                           r[key] = { ...r[key], voiceId: e.target.value };
                           updateSettings({ ...settings, reminders: r });
                         }}
-                        disabled={!isRemindEnabled}
-                        className={`bg-black/30 border border-white/5 rounded-xl py-1.5 px-2 text-[11px] text-slate-300 focus:outline-none flex-1 max-w-[170px] ${
-                          !isRemindEnabled ? 'opacity-30 cursor-not-allowed' : ''
-                        }`}
+                        className="bg-black/30 border border-white/5 rounded-xl py-1.5 px-2 text-[11px] text-slate-300 focus:outline-none flex-1 max-w-[170px] cursor-pointer hover:border-white/20 transition-all"
                       >
                         {ADHAN_VOICES.map(v => (
                           <option key={v.id} value={v.id} className="bg-[#051d14] text-slate-300">{v.name}</option>
@@ -506,16 +684,21 @@ export const PrayerTimesViewer: React.FC<PrayerTimesViewerProps> = ({ trueDarkMo
                       <button
                         type="button"
                         onClick={() => handlePlayPreview(currentVoiceId)}
+                        disabled={loadingAudioId === currentVoiceId}
                         className={`p-2 rounded-xl border text-slate-400 hover:text-white transition-all shrink-0 ${
                           playingPreviewId === currentVoiceId
                             ? trueDarkMode 
                               ? 'bg-[#dfb26d] text-black border-[#dfb26d]' 
                               : 'bg-[#00b87c] text-white border-[#00b87c]'
                             : 'bg-black/20 border-white/5 hover:border-white/10'
-                        }`}
+                        } ${loadingAudioId === currentVoiceId ? 'opacity-70 cursor-wait' : ''}`}
                         title="استمع لصوت الأذان"
                       >
-                        {playingPreviewId === currentVoiceId ? (
+                        {loadingAudioId === currentVoiceId ? (
+                          <div className={`w-3.5 h-3.5 rounded-full border border-t-transparent animate-spin ${
+                            trueDarkMode ? 'border-amber-400' : 'border-emerald-400'
+                          }`} />
+                        ) : playingPreviewId === currentVoiceId ? (
                           <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M10 9v6m4-6v6m7-3a9 9 0 11-18 0 9 9 0 0118 0z" />
                           </svg>

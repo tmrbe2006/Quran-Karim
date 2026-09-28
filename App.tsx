@@ -394,6 +394,21 @@ const App: React.FC = () => {
         if (localTafsirRes.ok) fullTafsirData = await localTafsirRes.json();
       }
 
+      // Also persist full datasets in bundled cache
+      try {
+        const bundledCache = await caches.open('quran-bundled-data');
+        if (fullTextData) {
+          await bundledCache.put('/data/quran-uthmani.json', new Response(JSON.stringify(fullTextData), {
+            headers: { 'Content-Type': 'application/json' }
+          }));
+        }
+        if (fullTafsirData) {
+          await bundledCache.put('/data/tafsir-jalalayn.json', new Response(JSON.stringify(fullTafsirData), {
+            headers: { 'Content-Type': 'application/json' }
+          }));
+        }
+      } catch (e) {}
+
       setTextDownloadProgress(60);
 
       const surahsList = fullTextData?.data?.surahs || [];
@@ -410,9 +425,14 @@ const App: React.FC = () => {
 
         const tafsirS = tafsirList[i];
         if (tafsirS) {
-          const tafsirUrl = `${API_BASE_URL}/surah/${s.number}/ar.jalalayn`;
           const tafsirPayload = { code: 200, status: "OK", data: tafsirS };
-          await cache.put(tafsirUrl, new Response(JSON.stringify(tafsirPayload), {
+          await cache.put(`${API_BASE_URL}/surah/${s.number}/ar.jalalayn`, new Response(JSON.stringify(tafsirPayload), {
+            headers: { 'Content-Type': 'application/json' }
+          }));
+          await cache.put(`${API_BASE_URL}/surah/${s.number}/ar.muyassar`, new Response(JSON.stringify(tafsirPayload), {
+            headers: { 'Content-Type': 'application/json' }
+          }));
+          await cache.put(`${API_BASE_URL}/surah/${s.number}/ar.ibnkathir`, new Response(JSON.stringify(tafsirPayload), {
             headers: { 'Content-Type': 'application/json' }
           }));
         }
@@ -421,6 +441,9 @@ const App: React.FC = () => {
           setTextDownloadProgress(60 + Math.round(((i + 1) / surahsList.length) * 40));
         }
       }
+      try {
+        localStorage.setItem('quran_offline_text_ready', 'true');
+      } catch (e) {}
       setTextDownloadProgress(100);
     } catch (error) {
       console.error("Text Sync Failed", error);
@@ -480,9 +503,15 @@ const App: React.FC = () => {
     }
   };
 
-  // Initial Data Fetching (Surahs Metadata)
+  // Initial Data Fetching (Surahs Metadata) and Background Offline Pre-warming
   useEffect(() => {
     const fetchSurahs = async () => {
+      // Pre-warm full Quran dataset in background for offline use
+      try {
+        getFullQuranData();
+        getFullTafsirData();
+      } catch (e) {}
+
       // 1. Try local bundled surahs.json first
       try {
         const localRes = await fetch('/data/surahs.json');
@@ -494,6 +523,20 @@ const App: React.FC = () => {
           }
         }
       } catch (e) {}
+
+      // Fallback: check CacheStorage for surahs.json
+      if (typeof window !== 'undefined' && 'caches' in window) {
+        try {
+          const localMatch = await caches.match('/data/surahs.json');
+          if (localMatch) {
+            const localData = await localMatch.json();
+            if (localData?.data && Array.isArray(localData.data)) {
+              setSurahs(localData.data);
+              return;
+            }
+          }
+        } catch (e) {}
+      }
 
       // 2. Try CacheStorage
       try {
@@ -585,7 +628,9 @@ const App: React.FC = () => {
             if (cachedText) {
               tData = await cachedText.json();
             }
-            const cachedTafsir = await cache.match(tafsirUrl);
+            const cachedTafsir = await cache.match(tafsirUrl) ||
+                                 await cache.match(`${API_BASE_URL}/surah/${selectedSurah.number}/ar.jalalayn`) ||
+                                 await cache.match(`${API_BASE_URL}/surah/${selectedSurah.number}/ar.muyassar`);
             if (cachedTafsir) {
               fData = await cachedTafsir.json();
             }
@@ -659,7 +704,14 @@ const App: React.FC = () => {
           setCurrentAyahIndex(targetAyahIndex !== null ? targetAyahIndex : 0);
           setTargetAyahIndex(null);
         } else {
-          setAyahs([]);
+          const directOffline = await getOfflineSurahAyahs(selectedSurah.number, activeTafsirEdition);
+          if (directOffline && directOffline.length > 0) {
+            setAyahs(directOffline);
+            setCurrentAyahIndex(targetAyahIndex !== null ? targetAyahIndex : 0);
+            setTargetAyahIndex(null);
+          } else {
+            setAyahs([]);
+          }
         }
       } catch (e) {
         if (!ctrl.signal.aborted) {
@@ -943,6 +995,25 @@ const App: React.FC = () => {
                   <div className="px-4 pt-3 flex items-center justify-between border-b border-white/5 bg-[#062117] pb-2">
                     <span className="text-[11px] font-bold text-[#dfb26d]">المصحف الرقمي التفاعلي</span>
                     <PWAInstallButton />
+                  </div>
+
+                  {/* High visibility Quick Link Banner to customize Adhan */}
+                  <div className="p-3 bg-[#0a271c] border-b border-white/5 flex flex-col gap-1.5 text-right" dir="rtl">
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="flex items-center gap-2">
+                        <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse shrink-0" />
+                        <span className="text-xs font-bold text-amber-200">🕌 ضبط منبه الأذان وتجربة الأصوات:</span>
+                      </div>
+                      <button
+                        onClick={() => setActiveTab('prayer')}
+                        className="px-3 py-1.5 bg-[#dfb26d] hover:bg-[#ebd095] text-[#051d14] text-[10px] font-black rounded-xl transition-all shadow-md active:scale-95 shrink-0"
+                      >
+                        اضبط وجرب الصوت الآن ➔
+                      </button>
+                    </div>
+                    <p className="text-[10px] text-slate-400 leading-normal">
+                      انقر للذهاب إلى شاشة "المواقيت" لاختبار صوت الأذان العذب (مكة، المدينة، الأقصى، عبد الباسط، العفاسي) بلمسة واحدة.
+                    </p>
                   </div>
                   <div className="flex-1 overflow-hidden">
                     <Sidebar 

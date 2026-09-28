@@ -20,6 +20,7 @@ export default defineConfig(({ mode }) => {
             'icon.svg',
             'pwa-192x192.png',
             'pwa-512x512.png',
+            'pwa-maskable-512x512.png',
             'tailwindcss.js',
             'data/quran-uthmani.json',
             'data/tafsir-jalalayn.json',
@@ -59,9 +60,25 @@ export default defineConfig(({ mode }) => {
             ],
           },
           workbox: {
-            maximumFileSizeToCacheInBytes: 6 * 1024 * 1024,
+            maximumFileSizeToCacheInBytes: 15 * 1024 * 1024,
             globPatterns: ['**/*.{js,css,html,ico,png,svg,woff,woff2,json}'],
+            navigateFallback: '/index.html',
+            navigateFallbackDenylist: [/^\/api/],
+            cleanupOutdatedCaches: true,
+            clientsClaim: true,
+            skipWaiting: true,
             runtimeCaching: [
+              {
+                urlPattern: ({ request }) => request.mode === 'navigate',
+                handler: 'NetworkFirst',
+                options: {
+                  cacheName: 'html-cache',
+                  networkTimeoutSeconds: 3,
+                  cacheableResponse: {
+                    statuses: [0, 200],
+                  },
+                },
+              },
               {
                 urlPattern: ({ url }) => url.pathname.startsWith('/data/'),
                 handler: 'CacheFirst',
@@ -120,9 +137,10 @@ export default defineConfig(({ mode }) => {
               },
               {
                 urlPattern: /^https:\/\/api\.alquran\.cloud\/v1\/.*/i,
-                handler: 'StaleWhileRevalidate',
+                handler: 'NetworkFirst',
                 options: {
                   cacheName: 'quran-api-cache',
+                  networkTimeoutSeconds: 3,
                   expiration: {
                     maxEntries: 300,
                     maxAgeSeconds: 60 * 60 * 24 * 60,
